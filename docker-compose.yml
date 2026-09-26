@@ -1,0 +1,37 @@
+services:
+
+  receiver:
+    build:
+      context: .
+      args:
+        SERVICE: receiver
+    container_name: receiver
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      - ./mnt/etc/milton:/etc/milton
+
+  worker:
+    build:
+      context: .
+      args:
+        SERVICE: worker
+    container_name: worker
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      - ./mnt/etc/milton:/etc/milton
+
+  dispatcher:
+    build:
+      context: .
+      args:
+        SERVICE: dispatcher
+    container_name: dispatcher
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      - ./mnt/etc/milton:/etc/milton

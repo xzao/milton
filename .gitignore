@@ -1,0 +1,12 @@
+# env
+.env*
+!.env.sample
+
+# data (linked + mounted, not committed)
+mnt/
+
+# py
+__pycache__
+
+# vscode
+.vscode
