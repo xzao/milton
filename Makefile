@@ -16,10 +16,12 @@ export $(shell sed 's/=.*//' .env)
 #	target[s]
 #
 develop:
-	@PYTHONPATH=src python src/receiver/main.py
-
-dispatcher:
-	@PYTHONPATH=src python src/dispatcher/main.py
+	@services="$(filter-out $@,$(MAKECMDGOALS))"; \
+	[ -n "$$services" ] || services="receiver worker dispatcher"; \
+	for service in $$services; do \
+		PYTHONPATH=src python src/$$service/main.py & \
+	done; \
+	wait
 
 install:
 	mkdir -p /etc/milton
@@ -31,9 +33,6 @@ install:
 
 logs:
 	docker-compose logs -f
-
-receiver:
-	@PYTHONPATH=src python src/receiver/main.py
 
 restart:
 	make stop
@@ -57,6 +56,3 @@ stop:
 test:
 	@clear
 	pytest "${TEST}"
-
-worker:
-	@PYTHONPATH=src python src/worker/main.py

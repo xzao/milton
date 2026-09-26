@@ -420,8 +420,9 @@ recipe just runs something (`@python src/receiver/main.py`, `@clear`).
 
 Targets are one lowercase word and alphabetical inside `#\ttarget[s]`:
 `develop`, `dispatcher`, `install`, `logs`, `receiver`, `restart`, `seed`,
-`shell`, `start`, `stop`, `test`, `worker`. `develop` runs the `receiver`.
-`seed ADDR=you@example.com` creates a new address folder.
+`shell`, `start`, `stop`, `test`, `worker`. `develop [service ...]` runs the
+listed services concurrently in dev — `receiver`, `worker`, `dispatcher` — all
+three by default. `seed ADDR=you@example.com` creates a new address folder.
 
 The Dockerfile keeps `#   working` → `#   service` → `#   requirement[s]` →
 `#   src` → `#   command`, FROM `python:3.10`, `WORKDIR /app`, a build `ARG

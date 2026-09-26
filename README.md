@@ -32,6 +32,7 @@ an `<email>` is valid when its `mail/` folder exists.
 #
 
 ```
+make develop [receiver worker dispatcher]   run services locally (all three by default)
 make seed ADDR=you@example.com     create a new address
 make start                         build and start the stack
 make logs                          follow service logs
