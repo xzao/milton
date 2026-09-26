@@ -12,8 +12,8 @@ def env(name, default = None):
     # value
     value = os.getenv(name)
 
-    # value none
-    if value == None:
+    # value check
+    if not value:
         return default
 
     # return
@@ -24,8 +24,8 @@ def env_int(name, default):
     # value
     value = os.getenv(name)
 
-    # value none
-    if value == None:
+    # value check
+    if not value:
         return default
 
     # return

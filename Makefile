@@ -24,8 +24,8 @@ develop:
 	wait
 
 install:
-	mkdir -p /etc/milton
-	if [ -d mnt ]; then rm -rf /etc/milton; ln -s $(CURDIR)/mnt/etc/milton /etc/milton; fi
+	mkdir -p $(CURDIR)/mnt/etc/milton
+	sudo ln -s $(CURDIR)/mnt/etc/milton /etc/milton
 	pip install pytest
 	pip install -r src/receiver/requirements.txt
 	pip install -r src/worker/requirements.txt

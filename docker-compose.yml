@@ -6,6 +6,8 @@ services:
       args:
         SERVICE: receiver
     container_name: receiver
+    ports:
+      - "${MILTON_RECEIVER_SMTP_PORT:-2525}:${MILTON_RECEIVER_SMTP_PORT:-2525}"
     env_file:
       - .env
     restart: unless-stopped
