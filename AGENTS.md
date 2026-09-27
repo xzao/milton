@@ -381,9 +381,10 @@ Three services share one data tree under `/etc/milton`. Each is one directory un
   and runs them via `scheduler.exec_jobs()`. Each run is
   `task.process(root, user, schedule)`: it reads the prompt and the user's
   context, reads **every** message in `mail/inbox` in one batch and calls
-  `generate(prompt, context, bodies)` once (stub for now), writes a single
-  `mail/outbox/<uuid7>/report.md` + `properties.json` (to/subject/cc/bcc from
-  the address `properties.json`), and archives the batch.
+  `generate(prompt, context, bodies)` once (stub for now, returns the html
+  body), writes a single `mail/outbox/<uuid7>/message.html` +
+  `properties.json` (to/subject/cc/bcc from the address `properties.json`),
+  and archives the batch.
 - **dispatcher** — scans each user's `mail/outbox`, validates the recipient,
   sends via `smtplib`, and moves the report to `mail/sent`.
 

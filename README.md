@@ -31,9 +31,11 @@ an `<email>` is valid when its `mail/` folder exists.
 
 `properties.json` at the address root holds the loose per-address settings. its
 `mail` section (`to`, `subject`, `cc`, `bcc`) becomes the properties of every
-report the worker writes to `mail/outbox/<id>/properties.json`, which the
-dispatcher reads back: `to` defaults to the address, `subject` to the schedule
-name, and `cc` / `bcc` are lists applied as message headers.
+message the worker writes to `mail/outbox/<id>/properties.json`, next to the
+generated html body in `mail/outbox/<id>/message.html`, which the dispatcher
+reads back: `to` defaults to the address, `subject` to the schedule name, and
+`cc` / `bcc` are lists applied as message headers. the body is sent as
+`text/html`.
 
 #
 #   usage

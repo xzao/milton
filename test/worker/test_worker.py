@@ -267,7 +267,7 @@ def test_get_properties_empty_without_mail_section(tmp_path):
 def test_generate_is_stub():
 
     # assert
-    assert generate('prompt', 'context', ['body']) == 'feature not implemented'
+    assert generate('prompt', 'context', ['body']) == '<p>feature not implemented</p>'
 
 
 def test_process_writes_report_and_archives_inbox(tmp_path):
@@ -290,9 +290,9 @@ def test_process_writes_report_and_archives_inbox(tmp_path):
     # report id
     report_id = os.listdir(outbox)[0]
 
-    # report file
-    with open(f"{outbox}/{report_id}/report.md") as fp:
-        assert fp.read() == 'feature not implemented'
+    # message file
+    with open(f"{outbox}/{report_id}/message.html", encoding = 'utf-8') as fp:
+        assert fp.read() == '<p>feature not implemented</p>'
 
     # properties data
     with open(f"{outbox}/{report_id}/properties.json") as fp:
@@ -434,9 +434,9 @@ def test_process_passes_all_mail_to_generate(tmp_path, monkeypatch):
     assert calls[0]['context'] == 'alice\n'
     assert sorted(calls[0]['bodies']) == sorted(parsed)
 
-    # report file
+    # message file
     outbox = f"{root}/alice@example.com/mail/outbox"
-    with open(f"{outbox}/{os.listdir(outbox)[0]}/report.md") as fp:
+    with open(f"{outbox}/{os.listdir(outbox)[0]}/message.html", encoding = 'utf-8') as fp:
         assert fp.read() == 'batch report'
 
 

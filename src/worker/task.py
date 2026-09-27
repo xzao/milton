@@ -137,7 +137,7 @@ def get_properties(root, user):
 def generate(prompt, context, bodies):
 
     # feature not implemented
-    return 'feature not implemented'
+    return '<p>feature not implemented</p>'
 
 
 #
@@ -205,8 +205,8 @@ def process(root, user, schedule):
         # body
         bodies.append(mail.body(message))
 
-    # report generate
-    text = generate(prompt_text, context_text, bodies)
+    # html generate
+    html = generate(prompt_text, context_text, bodies)
 
     # id
     id = uuid7.new()
@@ -215,9 +215,9 @@ def process(root, user, schedule):
     outbox = f"{root}/{user}/mail/outbox/{id}"
     os.makedirs(outbox, exist_ok = True)
 
-    # report file
-    with open(f"{outbox}/report.md", 'w') as fp:
-        fp.write(text)
+    # message file
+    with open(f"{outbox}/message.html", 'w', encoding = 'utf-8') as fp:
+        fp.write(html)
 
     # to
     to = section.get('to') or user

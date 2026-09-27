@@ -73,7 +73,7 @@ def send(folder, user):
         raise Exception(f"invalid recipient '{to}'")
 
     # body read
-    with open(f"{folder}/report.md") as fp:
+    with open(f"{folder}/message.html", encoding = 'utf-8') as fp:
         body = fp.read()
 
     # subject
@@ -90,7 +90,7 @@ def send(folder, user):
     message['From']    = SMTP_FROM
     message['To']      = to
     message['Subject'] = subject
-    message.set_content(body)
+    message.set_content(body, subtype = 'html')
 
     # cc header
     if cc:

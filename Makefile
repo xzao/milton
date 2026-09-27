@@ -43,7 +43,7 @@ seed:
 	@mkdir -p mnt/etc/milton/emails/$(ADDR)/mail
 	@mkdir -p mnt/etc/milton/emails/$(ADDR)/context
 	@mkdir -p mnt/etc/milton/emails/$(ADDR)/prompt/daily
-	@echo 'summarise the new mail.' > mnt/etc/milton/emails/$(ADDR)/prompt/daily/prompt.md
+	@echo 'summarise the new mail as an html email body.' > mnt/etc/milton/emails/$(ADDR)/prompt/daily/prompt.md
 	@echo '{"mail": {"to": "$(ADDR)", "subject": "", "cc": [], "bcc": []}}' > mnt/etc/milton/emails/$(ADDR)/properties.json
 
 shell:
