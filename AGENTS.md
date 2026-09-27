@@ -35,6 +35,9 @@ milton/
 │       ├── util.py          env helpers + address inference
 │       ├── mail.py          email parse / body / attachments
 │       └── uuid7.py         uuidv7 generator
+├── test/
+│   ├── conftest.py          adds src/ to sys.path for imports
+│   └── receiver/  worker/  dispatcher/  shared/
 ├── mnt/                     runtime data — not committed (linked/mounted at /etc/milton)
 ├── Makefile
 ├── Dockerfile
@@ -52,8 +55,8 @@ Rules:
   every image and importable via `PYTHONPATH=src` in development.
 - Each `main.py` is a **script**, not a module: it runs at import time. Do **not**
   add an `if __name__ == '__main__':` guard.
-- Do not add `tests/`, packaging metadata or `pyproject.toml` unless asked.
-  Tests are run with pytest via the Makefile (see `makefile & docker`).
+- Tests live under `test/` (one folder per component); run them with `make test`.
+  Do not add packaging metadata or `pyproject.toml` unless asked.
 - The `receiver` carries one small handler class (aiosmtpd's contract); it is
   the one allowed class.
 
@@ -419,10 +422,12 @@ blank lines between sections, TAB-indented recipes, and a leading `@` when the
 recipe just runs something (`@python src/receiver/main.py`, `@clear`).
 
 Targets are one lowercase word and alphabetical inside `#\ttarget[s]`:
-`develop`, `dispatcher`, `install`, `logs`, `receiver`, `restart`, `seed`,
-`shell`, `start`, `stop`, `test`, `worker`. `develop [service ...]` runs the
-listed services concurrently in dev — `receiver`, `worker`, `dispatcher` — all
-three by default. `seed ADDR=you@example.com` creates a new address folder.
+`develop`, `install`, `logs`, `restart`, `seed`, `shell`, `start`, `stop`,
+`test`, plus a `%` catch-all (`arg[s]`) that accepts extra goal arguments.
+`develop [service ...]` runs the listed services concurrently in dev
+(`receiver`, `worker`, `dispatcher` — all three by default). `test
+[component/...]` runs one test folder. `seed ADDR=you@example.com` creates a
+new address folder.
 
 The Dockerfile keeps `#   working` → `#   service` → `#   requirement[s]` →
 `#   src` → `#   command`, FROM `python:3.10`, `WORKDIR /app`, a build `ARG
@@ -443,15 +448,17 @@ introduce a `src` package or relative imports that assume one.
 #   test[s]
 #
 
-There are no tests yet. pytest is the chosen runner and is wired only through
-the Makefile: `make install` installs it, `make test TEST=<path>` runs
-`pytest "${TEST}"`. Therefore:
+Tests live under `test/`, one folder per component (`receiver/`, `worker/`,
+`dispatcher/`, `shared/`), plus `test/conftest.py` which puts `src/` on
+`sys.path` so tests can `from shared import ...`. pytest is the runner and is
+wired only through the Makefile: `make install` installs it, `make test` runs
+all of `test/`, and `make test <component>/...` runs one folder. Therefore:
 
 - keep pytest; do not add unittest / nose / tox;
 - name files `test_<module>.py` and tests `test_<behaviour>`;
 - write tests in this same banner-and-step style;
-- keep them runnable through `make test TEST=…`; do not add `pyproject.toml`,
-  `pytest.ini` or `setup.cfg` unless the task explicitly asks.
+- tests must run without starting any service (no servers, no sockets);
+- do not add `pyproject.toml`, `pytest.ini` or `setup.cfg` unless asked.
 
 
 #

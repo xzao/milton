@@ -2,6 +2,7 @@
 #	Makefile
 #
 .DEFAULT_GOAL := logs
+.PHONY: develop install logs restart seed shell start stop test
 
 
 #
@@ -55,4 +56,11 @@ stop:
 
 test:
 	@clear
-	PYTHONPATH=src pytest $(or $(addprefix test/,$(filter-out $@,$(MAKECMDGOALS))),test/)
+	pytest $(or $(addprefix test/,$(filter-out $@,$(MAKECMDGOALS))),test/)
+
+
+#
+#	arg[s]
+#
+%:
+	@true
