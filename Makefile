@@ -55,4 +55,4 @@ stop:
 
 test:
 	@clear
-	pytest "${TEST}"
+	PYTHONPATH=src pytest $(or $(addprefix test/,$(filter-out $@,$(MAKECMDGOALS))),test/)
