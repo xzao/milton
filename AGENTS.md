@@ -27,6 +27,7 @@ milton/
 │   │   └── requirements.txt aiosmtpd
 │   ├── worker/
 │   │   ├── main.py          scheduler + prompt loop entrypoint
+│   │   ├── task.py          prompt run logic (importable / testable)
 │   │   └── requirements.txt scheduler
 │   ├── dispatcher/
 │   │   ├── main.py          report sender entrypoint
@@ -56,6 +57,11 @@ Rules:
   every image and importable via `PYTHONPATH=src` in development.
 - Each `main.py` is a **script**, not a module: it runs at import time. Do **not**
   add an `if __name__ == '__main__':` guard.
+- A service may carry one service-local importable module beside its `main.py`
+  (`handler.py`, `task.py`) when its logic needs tests. Such a module does no
+  work at import, takes `root` instead of reading the data tree from a module
+  constant, and is imported bare (`from task import process`); `main.py` keeps
+  the env, directories, registration and loop.
 - Tests live under `test/` (one folder per component); run them with `make test`.
   Do not add packaging metadata or `pyproject.toml` unless asked.
 - The `receiver` carries one small handler class (aiosmtpd's contract); it is
@@ -112,7 +118,8 @@ Sections split a file into named blocks. Every section is:
   |---|---|
   | `src/receiver/main.py` | `var[s]` → `logging` → `controller` → `loop` |
   | `src/receiver/handler.py` | `handler` |
-  | `src/worker/main.py` | `var[s]` → `logging` → `dir[s]` → `interval` → `list` → `get[s]` → `prompt` → `process` → `register` → `loop` |
+  | `src/worker/main.py` | `var[s]` → `logging` → `dir[s]` → `register` → `loop` |
+  | `src/worker/task.py` | `interval` → `list` → `get[s]` → `generate` → `process` |
   | `src/dispatcher/main.py` | `var[s]` → `logging` → `dir[s]` → `send` → `loop` |
   | `src/shared/util.py` | `env[s]` → `email[s]` |
   | `src/shared/mail.py` | `parse` → `body` → `attachment[s]` |
@@ -371,9 +378,11 @@ Three services share one data tree under `/etc/milton`. Each is one directory un
   when `util.valid(EMAILS, address)` (the address has a `mail/` folder), then
   writes `message.eml` + attachments into `mail/inbox/<uuid7>/`.
 - **worker** — registers one `scheduler` job per `prompt/<schedule>/prompt.md`
-  and runs them via `scheduler.exec_jobs()`. Each run reads the prompt, the
-  user's context and the inbox, calls `report()` (stub for now), writes
-  `mail/outbox/<uuid7>/report.md` + `report.json`, and archives the inbox.
+  and runs them via `scheduler.exec_jobs()`. Each run is
+  `task.process(root, user, schedule)`: it reads the prompt and the user's
+  context, reads **every** message in `mail/inbox` in one batch and calls
+  `generate(prompt, context, bodies)` once (stub for now), writes a single
+  `mail/outbox/<uuid7>/report.md` + `report.json`, and archives the batch.
 - **dispatcher** — scans each user's `mail/outbox`, validates the recipient,
   sends via `smtplib`, and moves the report to `mail/sent`.
 
@@ -458,7 +467,10 @@ introduce a `src` package or relative imports that assume one.
 
 Tests live under `test/`, one folder per component (`receiver/`, `worker/`,
 `dispatcher/`, `shared/`), plus `test/conftest.py` which puts `src/` on
-`sys.path` so tests can `from shared import ...`. pytest is the runner and is
+`sys.path` so tests can `from shared import ...`. A component that carries its
+own importable module adds a folder `conftest.py` putting `src/<service>` on
+`sys.path` (`test/receiver/`, `test/worker/`), so tests can `from task import
+process`. pytest is the runner and is
 wired only through the Makefile: `make install` installs it, `make test` runs
 all of `test/`, and `make test <component>/...` runs one folder. Therefore:
 
@@ -466,6 +478,8 @@ all of `test/`, and `make test <component>/...` runs one folder. Therefore:
 - name files `test_<module>.py` and tests `test_<behaviour>`;
 - write tests in this same banner-and-step style;
 - tests must run without starting any service (no servers, no sockets);
+- tests must pass on a fresh repo — build every tree they need under
+  `tmp_path`, never under `/etc/milton` or `mnt/`;
 - do not add `pyproject.toml`, `pytest.ini` or `setup.cfg` unless asked.
 
 
@@ -484,7 +498,8 @@ Before finishing any change:
 - [ ] single quotes, except JSON payload dicts;
 - [ ] `== None` (never `is None`), one-line guards,
       `Exception('lowercase message')`;
-- [ ] two blank lines between sections and between top-level functions;
+- [ ] two blank lines around section banners, one blank line between functions
+      inside a section (`util.py`, `task.py`);
 - [ ] no docstrings, no `__main__` guard, no `print`;
 - [ ] no new dependency without a reason, and any new one is added to the
       service's `requirements.txt`;

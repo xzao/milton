@@ -8,7 +8,8 @@ and mails the resulting reports.
 #
 
 - `receiver` — smtp listener; writes accepted mail into the owner's `mail/inbox`.
-- `worker` — runs each user's `prompt/<schedule>/prompt.md` on its schedule.
+- `worker` — runs each user's `prompt/<schedule>/prompt.md` on its schedule;
+  each run reports on all mail in the inbox, then archives it.
 - `dispatcher` — validates and sends finished reports, then archives them.
 
 #
