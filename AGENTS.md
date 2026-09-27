@@ -366,7 +366,8 @@ logging.info(f"[{user}] [{schedule}] processed[{name}]")
 logging.info(f"[{id}] sent[{to}]")
 ```
 
-- `logging.info` for state changes, `logging.debug` for the quiet loop detail.
+- `logging.info` for state changes, `logging.debug` for the quiet loop detail,
+  `logging.warning` for a refusal, `logging.error` for a step that failed.
 
 
 #
@@ -377,8 +378,11 @@ Three services share one data tree under `/etc/milton`. Each is one directory un
 `src/` with a `main.py` and a `requirements.txt`, wired in `docker-compose.yml`.
 
 - **receiver** — `aiosmtpd` listener. Its `Handler` accepts a recipient only
-  when `util.valid(EMAILS, address)` (the address has a `mail/` folder), then
-  writes `message.eml` + attachments into `mail/inbox/<uuid7>/`.
+  when `util.valid(EMAILS, address)` (the address has a `mail/` folder) and
+  appends it to `envelope.rcpt_tos` — aiosmtpd only auto-records recipients
+  when there is no `handle_RCPT` hook — then writes `message.eml` +
+  attachments into `mail/inbox/<uuid7>/`, logging rejected addresses and save
+  failures.
 - **worker** — registers one `scheduler` job per `prompt/<schedule>/prompt.md`
   and runs them via `scheduler.exec_jobs()`. Each run is
   `task.process(root, user, schedule)`: it reads the prompt and the user's
