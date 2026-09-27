@@ -78,6 +78,7 @@ def get_prompt(root, user, schedule):
     # return
     return text
 
+
 def get_context(root, user):
 
     # path
@@ -110,6 +111,26 @@ def get_context(root, user):
     return text
 
 
+def get_properties(root, user):
+
+    # path
+    path = f"{root}/{user}/properties.json"
+
+    # path check
+    if not os.path.isfile(path):
+        return {}
+
+    # file read
+    with open(path) as fp:
+        data = json.load(fp)
+
+    # mail section
+    section = data.get('mail') or {}
+
+    # return
+    return section
+
+
 #
 #   generate
 #
@@ -136,6 +157,9 @@ def process(root, user, schedule):
 
     # context read
     context_text = get_context(root, user)
+
+    # properties read
+    section = get_properties(root, user)
 
     # mail path[s]
     paths = []
@@ -195,14 +219,28 @@ def process(root, user, schedule):
     with open(f"{outbox}/report.md", 'w') as fp:
         fp.write(text)
 
-    # report data
+    # to
+    to = section.get('to') or user
+
+    # subject
+    subject = section.get('subject') or schedule
+
+    # cc
+    cc = section.get('cc') or []
+
+    # bcc
+    bcc = section.get('bcc') or []
+
+    # message properties
     data = {
-        "to": user,
-        "subject": schedule
+        "to": to,
+        "subject": subject,
+        "cc": cc,
+        "bcc": bcc
     }
 
-    # report json
-    with open(f"{outbox}/report.json", 'w') as fp:
+    # properties file
+    with open(f"{outbox}/properties.json", 'w') as fp:
         json.dump(data, fp)
 
     # archive make

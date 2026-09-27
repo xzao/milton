@@ -382,7 +382,8 @@ Three services share one data tree under `/etc/milton`. Each is one directory un
   `task.process(root, user, schedule)`: it reads the prompt and the user's
   context, reads **every** message in `mail/inbox` in one batch and calls
   `generate(prompt, context, bodies)` once (stub for now), writes a single
-  `mail/outbox/<uuid7>/report.md` + `report.json`, and archives the batch.
+  `mail/outbox/<uuid7>/report.md` + `properties.json` (to/subject/cc/bcc from
+  the address `properties.json`), and archives the batch.
 - **dispatcher** — scans each user's `mail/outbox`, validates the recipient,
   sends via `smtplib`, and moves the report to `mail/sent`.
 
@@ -404,10 +405,16 @@ linked to `/etc/milton` in the devcontainer and bind-mounted at `/etc/milton`
 by compose:
 
 ```
-/etc/milton/emails/<email>/mail      inbox / outbox / sent / archive
-/etc/milton/emails/<email>/context   read-only context files
-/etc/milton/emails/<email>/prompt    <schedule>/prompt.md per schedule
+/etc/milton/emails/<email>/properties.json  address properties (mail to/subject/cc/bcc)
+/etc/milton/emails/<email>/mail             inbox / outbox / sent / archive
+/etc/milton/emails/<email>/context          read-only context files
+/etc/milton/emails/<email>/prompt           <schedule>/prompt.md per schedule
 ```
+
+`properties.json` at the address root holds the address's mail settings; its
+`mail` section (`to`, `subject`, `cc`, `bcc`) is copied into every
+`mail/outbox/<uuid7>/properties.json` the worker writes and applied by the
+dispatcher. `to` defaults to the address, `subject` to the schedule.
 
 A `<email>` is valid when its `mail/` folder exists. `util.emails(EMAILS)` lists
 them; `util.valid(EMAILS, address)` checks one. The schedule folder names are

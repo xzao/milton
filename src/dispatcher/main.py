@@ -43,13 +43,22 @@ for user in util.emails(EMAILS):
 #
 #   send
 #
+def header(value):
+
+    # text
+    if isinstance(value, str):
+        return value
+
+    # return
+    return ', '.join(value or [])
+
 def send(folder, user):
 
     # id
     id = os.path.basename(folder)
 
-    # data read
-    with open(f"{folder}/report.json") as fp:
+    # properties read
+    with open(f"{folder}/properties.json") as fp:
         data = json.load(fp)
 
     # to
@@ -70,12 +79,26 @@ def send(folder, user):
     # subject
     subject = data.get('subject') or 'milton report'
 
+    # cc
+    cc = data.get('cc') or []
+
+    # bcc
+    bcc = data.get('bcc') or []
+
     # message
     message = email.message.EmailMessage()
     message['From']    = SMTP_FROM
     message['To']      = to
     message['Subject'] = subject
     message.set_content(body)
+
+    # cc header
+    if cc:
+        message['Cc'] = header(cc)
+
+    # bcc header
+    if bcc:
+        message['Bcc'] = header(bcc)
 
     # smtp
     smtp = smtplib.SMTP(SMTP_HOST, SMTP_PORT)

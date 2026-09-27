@@ -3,7 +3,7 @@
 #
 from email.message import EmailMessage
 from shared import uuid7
-from task import generate, get_context, get_prompt, interval, list_schedules, process
+from task import generate, get_context, get_prompt, get_properties, interval, list_schedules, process
 import datetime
 import json
 import os
@@ -53,6 +53,15 @@ def message_make(root, user, body = 'hello body'):
 
     # return
     return id
+
+def properties_make(root, user, properties):
+
+    # file write
+    with open(f"{root}/{user}/properties.json", 'w') as fp:
+        json.dump(properties, fp)
+
+    # return
+    return properties
 
 
 #
@@ -202,6 +211,59 @@ def test_get_context_empty_without_dir(tmp_path):
     assert get_context(root, 'alice@example.com') == ''
 
 
+def test_get_properties_reads_mail_section(tmp_path):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # properties
+    properties = {
+        'mail'  : {
+            'to'      : 'alice@example.com',
+            'subject' : 'daily digest',
+            'cc'      : ['carol@example.com'],
+            'bcc'     : []
+        },
+        'loose' : 'ignored'
+    }
+
+    # user make
+    user_make(root, 'alice@example.com')
+
+    # properties make
+    properties_make(root, 'alice@example.com', properties)
+
+    # assert
+    assert get_properties(root, 'alice@example.com') == properties['mail']
+
+
+def test_get_properties_empty_without_file(tmp_path):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # user make
+    user_make(root, 'alice@example.com')
+
+    # assert
+    assert get_properties(root, 'alice@example.com') == {}
+
+
+def test_get_properties_empty_without_mail_section(tmp_path):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # user make
+    user_make(root, 'alice@example.com')
+
+    # properties make
+    properties_make(root, 'alice@example.com', {'loose': 'info'})
+
+    # assert
+    assert get_properties(root, 'alice@example.com') == {}
+
+
 def test_generate_is_stub():
 
     # assert
@@ -232,9 +294,15 @@ def test_process_writes_report_and_archives_inbox(tmp_path):
     with open(f"{outbox}/{report_id}/report.md") as fp:
         assert fp.read() == 'feature not implemented'
 
-    # report data
-    with open(f"{outbox}/{report_id}/report.json") as fp:
-        assert json.load(fp) == {'to': 'alice@example.com', 'subject': 'daily'}
+    # properties data
+    with open(f"{outbox}/{report_id}/properties.json") as fp:
+        data = json.load(fp)
+
+    # assert
+    assert data == {'to': 'alice@example.com', 'subject': 'daily', 'cc': [], 'bcc': []}
+
+    # report json gone
+    assert not os.path.isfile(f"{outbox}/{report_id}/report.json")
 
     # inbox empty
     assert os.listdir(f"{root}/alice@example.com/mail/inbox") == []
@@ -244,6 +312,52 @@ def test_process_writes_report_and_archives_inbox(tmp_path):
 
     # assert
     assert result == None
+
+
+def test_process_writes_properties_from_mail_section(tmp_path):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # properties
+    properties = {
+        'mail' : {
+            'to'      : 'team@example.com',
+            'subject' : 'daily digest',
+            'cc'      : ['carol@example.com'],
+            'bcc'     : ['bob@example.com']
+        }
+    }
+
+    # user make
+    user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
+
+    # properties make
+    properties_make(root, 'alice@example.com', properties)
+
+    # message make
+    message_make(root, 'alice@example.com')
+
+    # process
+    process(root, 'alice@example.com', 'daily')
+
+    # outbox
+    outbox = f"{root}/alice@example.com/mail/outbox"
+
+    # report id
+    report_id = os.listdir(outbox)[0]
+
+    # properties data
+    with open(f"{outbox}/{report_id}/properties.json") as fp:
+        data = json.load(fp)
+
+    # assert
+    assert data == {
+        'to'      : 'team@example.com',
+        'subject' : 'daily digest',
+        'cc'      : ['carol@example.com'],
+        'bcc'     : ['bob@example.com']
+    }
 
 
 def test_process_archives_all_mail(tmp_path):

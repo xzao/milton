@@ -21,12 +21,19 @@ committed — gitignored and dockerignored, linked in the devcontainer and
 mounted by compose):
 
 ```
-/etc/milton/emails/<email>/mail      mail spool (inbox/outbox/sent/archive)
-/etc/milton/emails/<email>/context   read-only context for the prompts
-/etc/milton/emails/<email>/prompt    <schedule>/prompt.md per schedule
+/etc/milton/emails/<email>/properties.json  mail properties (to/subject/cc/bcc)
+/etc/milton/emails/<email>/mail             mail spool (inbox/outbox/sent/archive)
+/etc/milton/emails/<email>/context          read-only context for the prompts
+/etc/milton/emails/<email>/prompt           <schedule>/prompt.md per schedule
 ```
 
 an `<email>` is valid when its `mail/` folder exists.
+
+`properties.json` at the address root holds the loose per-address settings. its
+`mail` section (`to`, `subject`, `cc`, `bcc`) becomes the properties of every
+report the worker writes to `mail/outbox/<id>/properties.json`, which the
+dispatcher reads back: `to` defaults to the address, `subject` to the schedule
+name, and `cc` / `bcc` are lists applied as message headers.
 
 #
 #   usage
