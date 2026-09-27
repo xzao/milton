@@ -2,10 +2,9 @@
 #   src/receiver/main.py
 #
 from aiosmtpd.controller import Controller
-from aiosmtpd.handlers import Message
-from shared import mail, util, uuid7
+from handler import Handler
+from shared import util
 import logging
-import os
 import time
 
 
@@ -25,62 +24,10 @@ logging.basicConfig(
 
 
 #
-#   handler
-#
-class Handler(Message):
-
-    async def handle_RCPT(self, server, session, envelope, address, rcpt_options):
-
-        # address check
-        if not util.valid(EMAILS, address):
-            return '550 not accepted'
-
-        # return
-        return '250 OK'
-
-    async def handle_DATA(self, server, session, envelope):
-
-        # rcpt iterate
-        for address in envelope.rcpt_tos:
-
-            # id
-            id = uuid7.new()
-
-            # folder
-            folder = f"{EMAILS}/{address}/mail/inbox/{id}"
-
-            # folder make
-            os.makedirs(f"{folder}/attachments", exist_ok = True)
-
-            # message file
-            with open(f"{folder}/message.eml", 'wb') as fp:
-                fp.write(envelope.content)
-
-            # message parse
-            message = mail.parse(envelope.content)
-
-            # attachment iterate
-            for attachment in mail.attachments(message):
-
-                # name
-                name = os.path.basename(attachment['name'])
-
-                # attachment file
-                with open(f"{folder}/attachments/{name}", 'wb') as fp:
-                    fp.write(attachment['data'])
-
-            # log
-            logging.info(f"[{id}] received[{envelope.mail_from}] to[{address}]")
-
-        # return
-        return '250 OK'
-
-
-#
 #   controller
 #
 controller = Controller(
-    Handler,
+    Handler(EMAILS),
     hostname = '0.0.0.0',
     port     = PORT
 )

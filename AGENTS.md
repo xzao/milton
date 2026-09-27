@@ -23,6 +23,7 @@ milton/
 ├── src/
 │   ├── receiver/
 │   │   ├── main.py          smtp listener entrypoint
+│   │   ├── handler.py       smtp handler (importable / testable)
 │   │   └── requirements.txt aiosmtpd
 │   ├── worker/
 │   │   ├── main.py          scheduler + prompt loop entrypoint
@@ -109,7 +110,8 @@ Sections split a file into named blocks. Every section is:
 
   | File | Section order |
   |---|---|
-  | `src/receiver/main.py` | `var[s]` → `logging` → `handler` → `controller` → `loop` |
+  | `src/receiver/main.py` | `var[s]` → `logging` → `controller` → `loop` |
+  | `src/receiver/handler.py` | `handler` |
   | `src/worker/main.py` | `var[s]` → `logging` → `dir[s]` → `interval` → `list` → `get[s]` → `prompt` → `process` → `register` → `loop` |
   | `src/dispatcher/main.py` | `var[s]` → `logging` → `dir[s]` → `send` → `loop` |
   | `src/shared/util.py` | `env[s]` → `email[s]` |
