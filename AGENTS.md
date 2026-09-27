@@ -390,7 +390,8 @@ Three services share one data tree under `/etc/milton`. Each is one directory un
   and archives the batch.
 - **dispatcher** — scans each user's `mail/outbox`, validates the recipient,
   sends `message.html` with amazon ses (`message.py` builds the destination and
-  content from `properties.json`), and moves the report to `mail/sent`.
+  content from `properties.json`), and moves the report to `mail/sent`. `send`
+  returns `False` without sending when `AWS_SECRET_ACCESS_KEY` is unset.
 
 `src/shared/` holds the reusable pieces: `util` (env + address inference),
 `mail` (parse/body/attachments), `uuid7` (uuidv7).

@@ -64,6 +64,5 @@ message body.
 
 the dispatcher sends reports with amazon ses. `MILTON_DISPATCHER_SES_FROM` must
 be a verified identity in ses, and the region comes from
-`MILTON_DISPATCHER_SES_REGION` or `AWS_DEFAULT_REGION`; aws credentials come
-from the standard `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` variables or the
-instance role.
+`MILTON_DISPATCHER_SES_REGION` or `AWS_DEFAULT_REGION`; reports are left in the
+outbox unless `AWS_SECRET_ACCESS_KEY` is set.

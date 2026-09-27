@@ -45,6 +45,11 @@ def send(folder, user):
     # id
     id = os.path.basename(folder)
 
+    # key check
+    if util.env('AWS_SECRET_ACCESS_KEY') == None:
+        logging.debug(f"[{id}] skipped[aws key missing]")
+        return False
+
     # properties read
     with open(f"{folder}/properties.json") as fp:
         data = json.load(fp)
