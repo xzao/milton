@@ -2,24 +2,21 @@
 #   src/dispatcher/main.py
 #
 from shared import util
-import email.message
+from message import content, destination
+import boto3
 import json
 import logging
 import os
-import smtplib
 import time
 
 
 #
 #   var[s]
 #
-EMAILS    = '/etc/milton/emails'
-INTERVAL  = util.env_int('MILTON_DISPATCHER_INTERVAL', 60)
-SMTP_HOST = util.env('MILTON_DISPATCHER_SMTP_HOST', 'localhost')
-SMTP_PORT = util.env_int('MILTON_DISPATCHER_SMTP_PORT', 25)
-SMTP_FROM = util.env('MILTON_DISPATCHER_SMTP_FROM', 'milton@localhost')
-SMTP_USER = util.env('MILTON_DISPATCHER_SMTP_USER')
-SMTP_PASS = util.env('MILTON_DISPATCHER_SMTP_PASS')
+EMAILS     = '/etc/milton/emails'
+INTERVAL   = util.env_int('MILTON_DISPATCHER_INTERVAL', 60)
+SES_FROM   = util.env('MILTON_DISPATCHER_SES_FROM', 'milton@localhost')
+SES_REGION = util.env('MILTON_DISPATCHER_SES_REGION')
 
 
 #
@@ -43,15 +40,6 @@ for user in util.emails(EMAILS):
 #
 #   send
 #
-def header(value):
-
-    # text
-    if isinstance(value, str):
-        return value
-
-    # return
-    return ', '.join(value or [])
-
 def send(folder, user):
 
     # id
@@ -69,12 +57,12 @@ def send(folder, user):
         raise Exception('report missing recipient')
 
     # to valid check
-    if not util.valid(EMAILS, to):
+    if '@' not in to:
         raise Exception(f"invalid recipient '{to}'")
 
-    # body read
+    # html read
     with open(f"{folder}/message.html", encoding = 'utf-8') as fp:
-        body = fp.read()
+        html = fp.read()
 
     # subject
     subject = data.get('subject') or 'milton report'
@@ -85,41 +73,25 @@ def send(folder, user):
     # bcc
     bcc = data.get('bcc') or []
 
-    # message
-    message = email.message.EmailMessage()
-    message['From']    = SMTP_FROM
-    message['To']      = to
-    message['Subject'] = subject
-    message.set_content(body, subtype = 'html')
+    # client
+    client = boto3.client('sesv2', region_name = SES_REGION)
 
-    # cc header
-    if cc:
-        message['Cc'] = header(cc)
+    # ses send
+    response = client.send_email(
+        FromEmailAddress = SES_FROM,
+        Destination      = destination(to, cc, bcc),
+        Content          = content(subject, html)
+    )
 
-    # bcc header
-    if bcc:
-        message['Bcc'] = header(bcc)
-
-    # smtp
-    smtp = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
-
-    # smtp login
-    if SMTP_USER != None:
-        smtp.starttls()
-        smtp.login(SMTP_USER, SMTP_PASS)
-
-    # smtp send
-    smtp.send_message(message)
-
-    # smtp quit
-    smtp.quit()
+    # message id
+    message_id = response.get('MessageId')
 
     # sent move
     sent = f"{EMAILS}/{user}/mail/sent"
     os.rename(folder, f"{sent}/{id}")
 
     # log
-    logging.info(f"[{id}] sent[{to}]")
+    logging.info(f"[{id}] sent[{to}] message[{message_id}]")
 
     # return
     return True
@@ -144,7 +116,12 @@ while True:
 
             # dir check
             if os.path.isdir(path):
-                send(path, user)
+
+                # send guard
+                try:
+                    send(path, user)
+                except Exception as error:
+                    logging.error(f"[{name}] failed[{error}]")
 
     # sleep
     logging.debug(f"sleeping for '{INTERVAL}'")

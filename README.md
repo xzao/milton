@@ -11,7 +11,7 @@ and mails the resulting reports.
 - `worker` — runs each user's `prompt/<schedule>/prompt.md` on its schedule;
   each run asks the configured model to turn all mail in the inbox into an html
   report, then archives it.
-- `dispatcher` — validates and sends finished reports, then archives them.
+- `dispatcher` — validates each finished report and sends it with amazon ses.
 
 #
 #   data
@@ -54,10 +54,16 @@ make logs                          follow service logs
 #
 
 copy `.env.sample` to `.env` (the makefile does this on first run) and set the
-smtp and port variables.
+receiver port and the ses settings.
 
 the worker writes the report html with an openai-compatible chat completions
 api, openrouter by default. set `MILTON_WORKER_API_KEY`, and optionally
 `MILTON_WORKER_API_URL` and `MILTON_WORKER_MODEL` (`openrouter/free` by
 default). the prompts should ask for an html fragment — the reply becomes the
 message body.
+
+the dispatcher sends reports with amazon ses. `MILTON_DISPATCHER_SES_FROM` must
+be a verified identity in ses, and the region comes from
+`MILTON_DISPATCHER_SES_REGION` or `AWS_DEFAULT_REGION`; aws credentials come
+from the standard `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` variables or the
+instance role.

@@ -30,8 +30,9 @@ milton/
 │   │   ├── task.py          prompt run logic (importable / testable)
 │   │   └── requirements.txt scheduler
 │   ├── dispatcher/
-│   │   ├── main.py          report sender entrypoint
-│   │   └── requirements.txt stdlib only (empty)
+│   │   ├── main.py          ses sender entrypoint
+│   │   ├── message.py       ses destination / content (importable / testable)
+│   │   └── requirements.txt boto3
 │   └── shared/
 │       ├── __init__.py      re-exports util, mail, uuid7
 │       ├── util.py          env helpers + address inference
@@ -58,10 +59,10 @@ Rules:
 - Each `main.py` is a **script**, not a module: it runs at import time. Do **not**
   add an `if __name__ == '__main__':` guard.
 - A service may carry one service-local importable module beside its `main.py`
-  (`handler.py`, `task.py`) when its logic needs tests. Such a module does no
-  work at import, takes `root` instead of reading the data tree from a module
-  constant, and is imported bare (`from task import process`); `main.py` keeps
-  the env, directories, registration and loop.
+  (`handler.py`, `task.py`, `message.py`) when its logic needs tests. Such a
+  module does no work at import, takes `root` instead of reading the data tree
+  from a module constant, and is imported bare (`from task import process`);
+  `main.py` keeps the env, directories, registration and loop.
 - Tests live under `test/` (one folder per component); run them with `make test`.
   Do not add packaging metadata or `pyproject.toml` unless asked.
 - The `receiver` carries one small handler class (aiosmtpd's contract); it is
@@ -145,7 +146,7 @@ Rules:
   No full stop. No trailing punctuation. Never a sentence.
 - Common vocabulary: `# value`, `# value none`, `# return`, `# folder iterate`,
   `# message read`, `# message parse`, `# report`, `# outbox make`,
-  `# archive move`, `# smtp send`, `# smtp quit`, `# sleep`, `# dir make`,
+  `# archive move`, `# ses send`, `# send guard`, `# sleep`, `# dir make`,
   `# address check`, `# to check`, `# to valid check`.
 - Use the `[s]` suffix on the trailing noun when the step touches a collection:
   `# item[s]`, `# folder iterate`, `# part iterate`.
@@ -200,9 +201,10 @@ blocks**; a lone statement keeps a single space.
 1. **Assignments** — pad the left-hand sides so the `=` line up:
 
 ```python
-EMAILS    = '/etc/milton/emails'
-INTERVAL  = util.env_int('MILTON_DISPATCHER_INTERVAL', 60)
-SMTP_HOST = util.env('MILTON_DISPATCHER_SMTP_HOST', 'localhost')
+EMAILS     = '/etc/milton/emails'
+INTERVAL   = util.env_int('MILTON_DISPATCHER_INTERVAL', 60)
+SES_FROM   = util.env('MILTON_DISPATCHER_SES_FROM', 'milton@localhost')
+SES_REGION = util.env('MILTON_DISPATCHER_SES_REGION')
 ```
 
 2. **Keyword arguments** — spaces *around* `=` (unlike PEP 8) and a single
@@ -257,8 +259,8 @@ Order:
 1. First-party / relative imports first (`from shared import ...`,
    `from . import ...`).
 2. Then the standard library and third-party modules in one alphabetical block
-   (`datetime`, `email`, `functools`, `json`, `logging`, `os`, `scheduler`,
-   `smtplib`, `time`, `aiosmtpd`).
+   (`boto3`, `datetime`, `email`, `functools`, `json`, `logging`, `os`,
+   `scheduler`, `time`, `aiosmtpd`).
 
 One module per line. `import x`, not `from x import *`. No import sorting tools
 — the order above is intentional and stable.
@@ -306,7 +308,7 @@ import time
 - Modules are a single lowercase word: `util`, `mail`, `uuid7`, `receiver`,
   `worker`, `dispatcher`.
 - Module-level constants are `SCREAMING_SNAKE_CASE`: `EMAILS`, `PORT`, `TICK`,
-  `SMTP_HOST`.
+  `SES_FROM`.
 - Function prefixes carry meaning and should be reused:
   - `get_*` — fetch a scalar (`get_prompt`, `get_context`).
   - `list_*` — fetch many, return a list (`list_schedules`).
@@ -387,7 +389,8 @@ Three services share one data tree under `/etc/milton`. Each is one directory un
   `properties.json` (to/subject/cc/bcc from the address `properties.json`),
   and archives the batch.
 - **dispatcher** — scans each user's `mail/outbox`, validates the recipient,
-  sends via `smtplib`, and moves the report to `mail/sent`.
+  sends `message.html` with amazon ses (`message.py` builds the destination and
+  content from `properties.json`), and moves the report to `mail/sent`.
 
 `src/shared/` holds the reusable pieces: `util` (env + address inference),
 `mail` (parse/body/attachments), `uuid7` (uuidv7).
@@ -431,12 +434,13 @@ MILTON_WORKER_API_KEY
 MILTON_WORKER_API_URL
 MILTON_WORKER_MODEL
 MILTON_DISPATCHER_INTERVAL
-MILTON_DISPATCHER_SMTP_HOST
-MILTON_DISPATCHER_SMTP_PORT
-MILTON_DISPATCHER_SMTP_FROM
-MILTON_DISPATCHER_SMTP_USER
-MILTON_DISPATCHER_SMTP_PASS
+MILTON_DISPATCHER_SES_FROM
+MILTON_DISPATCHER_SES_REGION
 ```
+
+the dispatcher's ses client also reads the standard `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` and `AWS_DEFAULT_REGION`
+variables through boto3.
 
 `.env.sample` is the committed template: bare `KEY=` lines, no values, no
 quotes, one per line.
@@ -481,10 +485,10 @@ Tests live under `test/`, one folder per component (`receiver/`, `worker/`,
 `dispatcher/`, `shared/`), plus `test/conftest.py` which puts `src/` on
 `sys.path` so tests can `from shared import ...`. A component that carries its
 own importable module adds a folder `conftest.py` putting `src/<service>` on
-`sys.path` (`test/receiver/`, `test/worker/`), so tests can `from task import
-process`. pytest is the runner and is
-wired only through the Makefile: `make install` installs it, `make test` runs
-all of `test/`, and `make test <component>/...` runs one folder. Therefore:
+`sys.path` (`test/receiver/`, `test/worker/`, `test/dispatcher/`), so tests can
+`from task import process`. pytest is the runner and is wired only through the
+Makefile: `make install` installs it, `make test` runs all of `test/`, and
+`make test <component>/...` runs one folder. Therefore:
 
 - keep pytest; do not add unittest / nose / tox;
 - name files `test_<module>.py` and tests `test_<behaviour>`;
