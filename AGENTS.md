@@ -119,7 +119,7 @@ Sections split a file into named blocks. Every section is:
   | `src/receiver/main.py` | `var[s]` → `logging` → `controller` → `loop` |
   | `src/receiver/handler.py` | `handler` |
   | `src/worker/main.py` | `var[s]` → `logging` → `dir[s]` → `register` → `loop` |
-  | `src/worker/task.py` | `interval` → `list` → `get[s]` → `generate` → `process` |
+  | `src/worker/task.py` | `interval` → `list` → `get[s]` → `model` → `generate` → `process` |
   | `src/dispatcher/main.py` | `var[s]` → `logging` → `dir[s]` → `send` → `loop` |
   | `src/shared/util.py` | `env[s]` → `email[s]` |
   | `src/shared/mail.py` | `parse` → `body` → `attachment[s]` |
@@ -381,8 +381,9 @@ Three services share one data tree under `/etc/milton`. Each is one directory un
   and runs them via `scheduler.exec_jobs()`. Each run is
   `task.process(root, user, schedule)`: it reads the prompt and the user's
   context, reads **every** message in `mail/inbox` in one batch and calls
-  `generate(prompt, context, bodies)` once (stub for now, returns the html
-  body), writes a single `mail/outbox/<uuid7>/message.html` +
+  `generate(prompt, context, bodies)` once — which asks the configured
+  chat-completions model (`task.model`, openrouter by default) for the html
+  body — writes a single `mail/outbox/<uuid7>/message.html` +
   `properties.json` (to/subject/cc/bcc from the address `properties.json`),
   and archives the batch.
 - **dispatcher** — scans each user's `mail/outbox`, validates the recipient,
@@ -426,6 +427,9 @@ Environment variables carry a **project prefix**:
 ```
 MILTON_RECEIVER_SMTP_PORT
 MILTON_WORKER_INTERVAL
+MILTON_WORKER_API_KEY
+MILTON_WORKER_API_URL
+MILTON_WORKER_MODEL
 MILTON_DISPATCHER_INTERVAL
 MILTON_DISPATCHER_SMTP_HOST
 MILTON_DISPATCHER_SMTP_PORT

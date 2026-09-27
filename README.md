@@ -9,7 +9,8 @@ and mails the resulting reports.
 
 - `receiver` — smtp listener; writes accepted mail into the owner's `mail/inbox`.
 - `worker` — runs each user's `prompt/<schedule>/prompt.md` on its schedule;
-  each run reports on all mail in the inbox, then archives it.
+  each run asks the configured model to turn all mail in the inbox into an html
+  report, then archives it.
 - `dispatcher` — validates and sends finished reports, then archives them.
 
 #
@@ -54,3 +55,9 @@ make logs                          follow service logs
 
 copy `.env.sample` to `.env` (the makefile does this on first run) and set the
 smtp and port variables.
+
+the worker writes the report html with an openai-compatible chat completions
+api, openrouter by default. set `MILTON_WORKER_API_KEY`, and optionally
+`MILTON_WORKER_API_URL` and `MILTON_WORKER_MODEL` (`openrouter/free` by
+default). the prompts should ask for an html fragment — the reply becomes the
+message body.

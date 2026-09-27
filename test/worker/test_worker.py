@@ -3,7 +3,7 @@
 #
 from email.message import EmailMessage
 from shared import uuid7
-from task import generate, get_context, get_prompt, get_properties, interval, list_schedules, process
+from task import generate, get_context, get_key, get_prompt, get_properties, html_extract, interval, list_schedules, process, text_cut
 import datetime
 import json
 import os
@@ -62,6 +62,18 @@ def properties_make(root, user, properties):
 
     # return
     return properties
+
+def model_make(monkeypatch, html = '<p>stub report</p>'):
+
+    # model
+    def model(messages):
+        return html
+
+    # model patch
+    monkeypatch.setattr('task.model', model)
+
+    # return
+    return html
 
 
 #
@@ -264,13 +276,95 @@ def test_get_properties_empty_without_mail_section(tmp_path):
     assert get_properties(root, 'alice@example.com') == {}
 
 
-def test_generate_is_stub():
+def test_get_key_reads_env(monkeypatch):
+
+    # env set
+    monkeypatch.setenv('MILTON_WORKER_API_KEY', 'test key')
 
     # assert
-    assert generate('prompt', 'context', ['body']) == '<p>feature not implemented</p>'
+    assert get_key() == 'test key'
 
 
-def test_process_writes_report_and_archives_inbox(tmp_path):
+def test_get_key_missing_raises(monkeypatch):
+
+    # env unset
+    monkeypatch.delenv('MILTON_WORKER_API_KEY', raising = False)
+
+    # raises
+    with pytest.raises(Exception, match = 'model key missing'):
+        get_key()
+
+
+def test_text_cut_under_limit():
+
+    # assert
+    assert text_cut('short', 10) == 'short'
+
+
+def test_text_cut_over_limit():
+
+    # assert
+    assert text_cut('0123456789', 4) == '0123'
+
+
+def test_html_extract_plain():
+
+    # assert
+    assert html_extract('<p>hi</p>') == '<p>hi</p>'
+
+
+def test_html_extract_fenced():
+
+    # assert
+    assert html_extract('```html\n<p>hi</p>\n```') == '<p>hi</p>'
+
+
+def test_html_extract_prose():
+
+    # assert
+    assert html_extract('here you go:\n```\n<p>hi</p>\n```') == '<p>hi</p>'
+
+
+def test_generate_passes_prompt_context_and_bodies(monkeypatch):
+
+    # message[s]
+    sent = []
+
+    # model make
+    def model_capture(messages):
+        sent.append(messages)
+        return '<p>ok</p>'
+
+    # model patch
+    monkeypatch.setattr('task.model', model_capture)
+
+    # generate
+    html = generate('prompt text', 'context text', ['first', 'second'])
+
+    # content
+    content = sent[0][1]['content']
+
+    # assert
+    assert html == '<p>ok</p>'
+    assert sent[0][0]['role'] == 'system'
+    assert sent[0][1]['role'] == 'user'
+    assert 'prompt text' in content
+    assert 'context text' in content
+    assert 'first' in content
+    assert 'second' in content
+
+
+def test_generate_empty_html_raises(monkeypatch):
+
+    # model make
+    model_make(monkeypatch, '')
+
+    # raises
+    with pytest.raises(Exception, match = 'model html empty'):
+        generate('prompt', 'context', ['body'])
+
+
+def test_process_writes_report_and_archives_inbox(tmp_path, monkeypatch):
 
     # root
     root = f"{tmp_path}/emails"
@@ -280,6 +374,9 @@ def test_process_writes_report_and_archives_inbox(tmp_path):
 
     # message make
     id = message_make(root, 'alice@example.com', 'hello body')
+
+    # model make
+    model_make(monkeypatch)
 
     # process
     result = process(root, 'alice@example.com', 'daily')
@@ -292,7 +389,7 @@ def test_process_writes_report_and_archives_inbox(tmp_path):
 
     # message file
     with open(f"{outbox}/{report_id}/message.html", encoding = 'utf-8') as fp:
-        assert fp.read() == '<p>feature not implemented</p>'
+        assert fp.read() == '<p>stub report</p>'
 
     # properties data
     with open(f"{outbox}/{report_id}/properties.json") as fp:
@@ -314,7 +411,7 @@ def test_process_writes_report_and_archives_inbox(tmp_path):
     assert result == None
 
 
-def test_process_writes_properties_from_mail_section(tmp_path):
+def test_process_writes_properties_from_mail_section(tmp_path, monkeypatch):
 
     # root
     root = f"{tmp_path}/emails"
@@ -338,6 +435,9 @@ def test_process_writes_properties_from_mail_section(tmp_path):
     # message make
     message_make(root, 'alice@example.com')
 
+    # model make
+    model_make(monkeypatch)
+
     # process
     process(root, 'alice@example.com', 'daily')
 
@@ -360,7 +460,7 @@ def test_process_writes_properties_from_mail_section(tmp_path):
     }
 
 
-def test_process_archives_all_mail(tmp_path):
+def test_process_archives_all_mail(tmp_path, monkeypatch):
 
     # root
     root = f"{tmp_path}/emails"
@@ -374,6 +474,9 @@ def test_process_archives_all_mail(tmp_path):
     # message[s] make
     for _ in range(3):
         ids.append(message_make(root, 'alice@example.com'))
+
+    # model make
+    model_make(monkeypatch)
 
     # process
     process(root, 'alice@example.com', 'daily')
@@ -440,7 +543,7 @@ def test_process_passes_all_mail_to_generate(tmp_path, monkeypatch):
         assert fp.read() == 'batch report'
 
 
-def test_process_report_id_is_uuid7(tmp_path):
+def test_process_report_id_is_uuid7(tmp_path, monkeypatch):
 
     # root
     root = f"{tmp_path}/emails"
@@ -450,6 +553,9 @@ def test_process_report_id_is_uuid7(tmp_path):
 
     # message make
     message_make(root, 'alice@example.com')
+
+    # model make
+    model_make(monkeypatch)
 
     # process
     process(root, 'alice@example.com', 'daily')
@@ -497,7 +603,7 @@ def test_process_ignores_inbox_files(tmp_path):
     assert os.listdir(f"{root}/alice@example.com/mail/outbox") == []
 
 
-def test_process_skips_message_without_eml(tmp_path):
+def test_process_skips_message_without_eml(tmp_path, monkeypatch):
 
     # root
     root = f"{tmp_path}/emails"
@@ -511,6 +617,9 @@ def test_process_skips_message_without_eml(tmp_path):
     # folder make
     partial = '01a0e000-0000-7000-8000-000000000000'
     os.makedirs(f"{root}/alice@example.com/mail/inbox/{partial}/attachments", exist_ok = True)
+
+    # model make
+    model_make(monkeypatch)
 
     # process
     process(root, 'alice@example.com', 'daily')

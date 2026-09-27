@@ -1,10 +1,11 @@
 #
 #   src/worker/task.py
 #
-from shared import mail, uuid7
+from shared import mail, util, uuid7
 import datetime
 import json
 import logging
+import openai
 import os
 
 
@@ -131,13 +132,117 @@ def get_properties(root, user):
     return section
 
 
+def get_key():
+
+    # key
+    key = util.env('MILTON_WORKER_API_KEY')
+
+    # key check
+    if key == None:
+        raise Exception('model key missing')
+
+    # return
+    return key
+
+
+#
+#   model
+#
+def model(messages):
+
+    # url
+    url = util.env('MILTON_WORKER_API_URL', 'https://openrouter.ai/api/v1')
+
+    # client
+    client = openai.OpenAI(
+        base_url = url,
+        api_key  = get_key(),
+        timeout  = 60
+    )
+
+    # completion
+    completion = client.chat.completions.create(
+        model      = util.env('MILTON_WORKER_MODEL', 'openrouter/free'),
+        messages   = messages,
+        max_tokens = 2000
+    )
+
+    # choice[s]
+    choices = completion.choices or []
+
+    # choice check
+    if not choices:
+        raise Exception('model choice missing')
+
+    # return
+    return completion.choices[0].message.content or ''
+
+
 #
 #   generate
 #
+def text_cut(text, limit):
+
+    # limit check
+    if len(text) <= limit:
+        return text
+
+    # return
+    return text[:limit]
+
+def html_extract(text):
+
+    # text
+    text = text.strip()
+
+    # fence check
+    if '```' in text:
+
+        # part
+        part = text.split('```')[1].strip()
+
+        # line[s]
+        lines = part.splitlines()
+
+        # tag check
+        if len(lines) > 1 and '<' not in lines[0]:
+            part = part[len(lines[0]):].lstrip()
+
+        # text
+        text = part
+
+    # return
+    return text
+
 def generate(prompt, context, bodies):
 
-    # feature not implemented
-    return '<p>feature not implemented</p>'
+    # system
+    system = 'reply with a single html fragment, no markdown and no code fences'
+
+    # body[s]
+    joined = '\n\n---\n\n'.join(bodies)
+
+    # limit
+    limit = 12000
+
+    # content
+    content = f"{prompt}\n\n# context\n\n{context}\n\n# mail\n\n{joined}"
+
+    # message[s]
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": text_cut(content, limit)}
+    ]
+
+    # html
+    html = html_extract(model(messages))
+
+    # html check
+    if not html:
+        raise Exception('model html empty')
+
+    # return
+    return html
 
 
 #
