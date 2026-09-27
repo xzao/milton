@@ -16,7 +16,7 @@ class Handler(MessageBase):
         super().__init__()
         self.root = root
 
-    async def handle_RCPT(self, server, session, envelope, address, rcpt_options):
+    async def handle_RCPT(self, _server, _session, _envelope, address, _rcpt_options):
 
         # address check
         if not util.valid(self.root, address):
@@ -25,7 +25,7 @@ class Handler(MessageBase):
         # return
         return '250 OK'
 
-    async def handle_DATA(self, server, session, envelope):
+    async def handle_DATA(self, _server, _session, envelope):
 
         # rcpt iterate
         for address in envelope.rcpt_tos:

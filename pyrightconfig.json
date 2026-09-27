@@ -1,0 +1,8 @@
+{
+	"extraPaths": [
+		"src",
+		"src/receiver",
+		"src/worker",
+		"src/dispatcher"
+	]
+}

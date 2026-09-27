@@ -256,6 +256,12 @@ Order:
 One module per line. `import x`, not `from x import *`. No import sorting tools
 — the order above is intentional and stable.
 
+A service's own modules (e.g. `src/receiver/handler.py`) are imported bare —
+`from handler import Handler` — not as `receiver.handler`. The service
+directory is on the path at runtime (the script's own directory, or
+`PYTHONPATH=src` in dev, or the flattened `/app` in the image) and is listed in
+`pyrightconfig.json` `extraPaths` so the editor resolves it too.
+
 ```python
 #
 #   src/worker/main.py
