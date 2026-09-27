@@ -56,6 +56,10 @@ make logs                          follow service logs
 copy `.env.sample` to `.env` (the makefile does this on first run) and set the
 receiver port and the ses settings.
 
+the services run as `MILTON_UID` / `MILTON_GID` (default `1000`) inside the
+containers, so files written into `mnt/` stay owned by you — set them to the
+output of `id -u` and `id -g` when that is not `1000`.
+
 the worker writes the report html with an openai-compatible chat completions
 api, openrouter by default. set `MILTON_WORKER_API_KEY`, and optionally
 `MILTON_WORKER_API_URL` and `MILTON_WORKER_MODEL` (`openrouter/free` by

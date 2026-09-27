@@ -6,6 +6,7 @@ services:
       args:
         SERVICE: receiver
     container_name: receiver
+    user: "${MILTON_UID:-1000}:${MILTON_GID:-1000}"
     ports:
       - "${MILTON_RECEIVER_SMTP_PORT:-2525}:${MILTON_RECEIVER_SMTP_PORT:-2525}"
     env_file:
@@ -20,6 +21,7 @@ services:
       args:
         SERVICE: worker
     container_name: worker
+    user: "${MILTON_UID:-1000}:${MILTON_GID:-1000}"
     env_file:
       - .env
     restart: unless-stopped
@@ -32,6 +34,7 @@ services:
       args:
         SERVICE: dispatcher
     container_name: dispatcher
+    user: "${MILTON_UID:-1000}:${MILTON_GID:-1000}"
     env_file:
       - .env
     restart: unless-stopped

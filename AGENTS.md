@@ -433,6 +433,8 @@ interval tokens: `5m`, `30m`, `1h`, `daily`, `weekly`.
 Environment variables carry a **project prefix**:
 
 ```
+MILTON_UID
+MILTON_GID
 MILTON_RECEIVER_SMTP_PORT
 MILTON_WORKER_INTERVAL
 MILTON_WORKER_API_KEY
@@ -473,9 +475,12 @@ SERVICE` to select the service, and the spaced array form
 `CMD [ "python", "./main.py" ]`.
 
 `docker-compose.yml` runs the three services, each `build`ing with
-`args: SERVICE: <name>`, `env_file: .env`, `restart: unless-stopped`, and the
-bind mount `./mnt/etc/milton:/etc/milton`. `.dockerignore` keeps `mnt` (and `.git`, `.env*`,
-`__pycache__`) out of the build context.
+`args: SERVICE: <name>` and running as
+`user: ${MILTON_UID:-1000}:${MILTON_GID:-1000}` so the files it writes through
+the bind mount stay owned by the host user, with `env_file: .env`,
+`restart: unless-stopped` and the bind mount `./mnt/etc/milton:/etc/milton`.
+`.dockerignore` keeps `mnt` (and `.git`, `.env*`, `__pycache__`) out of the
+build context.
 
 Important: the source is copied to `/app` **without** the `src/` level, so
 `main.py` imports `from shared import ...`, not `from src.shared …`. Never
