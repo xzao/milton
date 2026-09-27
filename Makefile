@@ -33,7 +33,7 @@ install:
 	pip install -r src/dispatcher/requirements.txt
 
 logs:
-	docker-compose logs -f
+	docker compose logs -f
 
 restart:
 	make stop
@@ -50,10 +50,10 @@ shell:
 	docker exec -it receiver bash
 
 start:
-	docker-compose up -d --build
+	docker compose up -d --build
 
 stop:
-	docker-compose down
+	docker compose down
 
 test:
 	@clear
