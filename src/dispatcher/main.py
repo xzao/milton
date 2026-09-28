@@ -91,8 +91,11 @@ def send(folder, user):
     # message id
     message_id = response.get('MessageId')
 
-    # sent move
+    # sent make
     sent = f"{EMAILS}/{user}/mail/sent"
+    os.makedirs(sent, exist_ok = True)
+
+    # sent move
     os.rename(folder, f"{sent}/{id}")
 
     # log
@@ -112,6 +115,10 @@ while True:
 
         # outbox path
         outbox = f"{EMAILS}/{user}/mail/outbox"
+
+        # outbox check
+        if not os.path.isdir(outbox):
+            continue
 
         # folder iterate
         for name in sorted(os.listdir(outbox)):

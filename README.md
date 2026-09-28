@@ -57,6 +57,13 @@ every schedule shares one prompt: the text of every file under `prompt/`, read
 in sorted order and each labelled with its path, the same way `context/` is
 read.
 
+every schedule also shares one inbox, so when an address lists several, the
+first to run reports on the mail and archives it — the others find it empty.
+list one schedule per address unless that is what you want; the worker warns
+when it sees more than one. the worker re-reads addresses and `schedules` every
+`MILTON_WORKER_RELOAD` seconds (`300` by default), so new addresses and
+schedule edits need no restart.
+
 #
 #   usage
 #
@@ -94,11 +101,15 @@ api, openrouter by default. set `MILTON_WORKER_API_KEY`, and optionally
 default). the prompts should ask for an html fragment — the reply becomes the
 message body. the model gets each mail as a `<message>` block with its headers,
 each `context/` and `prompt/` file as a `<file path="…">` block, and the prompt
-last — so a `prompt/template.html` is read as the template to fill and
-`context/` files as reference. the mail and context text is cut to
-`MILTON_WORKER_INPUT_LIMIT` characters (`12000` by default; the prompt is never
-cut) and the reply is
-capped at `MILTON_WORKER_MAX_TOKENS` tokens (`2000` by default), so raise both
+last. every `.html` file under `prompt/` or `context/` (e.g.
+`context/template.html`) goes in a separate `<template>` block: the model is
+told to reply with that template filled in — markup, styles and section order
+kept, only its `{{tokens}}` replaced and its blocks repeated or removed as the
+prompt says. the other `context/` files are reference. html-only mail is
+converted to text. each run takes as much mail as fits in
+`MILTON_WORKER_INPUT_LIMIT` characters (`12000` by default) after the context,
+and leaves the rest in the inbox for the next run (the template and the prompt
+are never cut), and the reply is capped at `MILTON_WORKER_MAX_TOKENS` tokens (`2000` by default), so raise both
 when the prompt, the context and the html template are large.
 
 the dispatcher sends reports with amazon ses. `MILTON_DISPATCHER_SES_FROM` must

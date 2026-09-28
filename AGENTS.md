@@ -138,7 +138,7 @@ Sections split a file into named blocks. Every section is:
   |---|---|
   | `src/receiver/main.py` | `var[s]` → `logging` → `controller` → `loop` |
   | `src/receiver/handler.py` | `handler` |
-  | `src/worker/main.py` | `var[s]` → `logging` → `dir[s]` → `register` → `loop` |
+  | `src/worker/main.py` | `var[s]` → `logging` → `register` → `loop` |
   | `src/worker/task.py` | `interval` → `get[s]` → `list` → `model` → `generate` → `process` |
   | `src/dispatcher/main.py` | `var[s]` → `logging` → `dir[s]` → `send` → `loop` |
   | `src/dispatcher/message.py` | `address` → `destination` → `content` |
@@ -433,16 +433,28 @@ Three services share one data tree under `/etc/milton`. Each is one directory un
   when there is no `handle_RCPT` hook — then writes `message.eml` +
   attachments into `mail/inbox/<uuid7>/`, logging rejected addresses and save
   failures.
-- **worker** — registers one `scheduler` job per schedule in the address
-  `properties.json` `schedules` list and runs them via `scheduler.exec_jobs()`.
+- **worker** — `register()` adds one `scheduler` job per schedule in the
+  address `properties.json` `schedules` list (and makes the `mail/` folders).
+  The loop calls it again every `MILTON_WORKER_RELOAD` seconds, adding and
+  removing only the jobs that changed, and runs the jobs via
+  `scheduler.exec_jobs()`. Every schedule of an address shares one inbox, so the
+  first to run takes the mail; `register` warns when an address lists more than
+  one.
   Each run is `task.process(root, user, schedule)`: it reads the shared prompt
-  and the user's context, reads **every** message in `mail/inbox` in one batch
-  and calls `generate(prompt, context, messages)` once. The model sees tagged
-  blocks — `<mail>` of `<message id from to date subject attachments>`, then
-  `<context>`, then `<prompt>` last, each file a `<file path="prompt/…">` —
-  and a system message naming each block's role. `generate` cuts the mail and
-  context (never the prompt) to `MILTON_WORKER_INPUT_LIMIT` characters and asks
-  the configured
+  and the user's context, takes messages from `mail/inbox` in sorted order
+  while they fit in `MILTON_WORKER_INPUT_LIMIT` less the context (at least one; the rest wait
+  for the next run), and calls `generate(prompt, context, messages, template)` once.
+  The model sees tagged blocks — `<mail>` of
+  `<message id from to date subject attachments>`, then `<context>`, then
+  `<template>` (every `.html` file under `prompt/` or `context/`, via
+  `get_template`; never cut), then `<prompt>` last, each file a
+  `<file path="prompt/…">` — and a system message telling the model to return
+  the template filled in, keeping its markup, and
+  naming each block's role and saying mail and context are data, not
+  instructions. `task.tag_guard` escapes any `</file`, `</message`, `</mail`,
+  `</context`, `</prompt` inside a block so its text cannot forge one.
+  `generate` cuts the mail and context (never the prompt) to
+  `MILTON_WORKER_INPUT_LIMIT` characters and asks the configured
   chat-completions model (`task.model`, openai client against openrouter by
   default, reply capped at `MILTON_WORKER_MAX_TOKENS`) for the html body —
   writes a single `mail/outbox/<uuid7>/message.html` + `properties.json`
@@ -507,6 +519,7 @@ MILTON_WORKER_API_URL
 MILTON_WORKER_MODEL
 MILTON_WORKER_INPUT_LIMIT
 MILTON_WORKER_MAX_TOKENS
+MILTON_WORKER_RELOAD
 MILTON_DISPATCHER_INTERVAL
 MILTON_DISPATCHER_SES_FROM
 MILTON_DISPATCHER_SES_REGION

@@ -3,6 +3,8 @@
 #
 import email
 import email.policy
+import html
+import re
 
 
 #
@@ -20,20 +22,44 @@ def parse(raw):
 #
 #   body
 #
+def text(markup):
+
+    # block[s] drop
+    markup = re.sub(r'(?is)<(script|style)\b.*?</\1\s*>', '', markup)
+
+    # break[s]
+    markup = re.sub(r'(?i)<br\s*/?>|</(p|div|li|tr|h[1-6])\s*>', '\n', markup)
+
+    # tag[s] drop
+    markup = re.sub(r'<[^>]+>', '', markup)
+
+    # entity[s]
+    markup = html.unescape(markup)
+
+    # space[s]
+    markup = re.sub(r'[ \t\r\f\v]+', ' ', markup)
+
+    # line[s]
+    markup = re.sub(r' *\n[ \n]*', '\n', markup)
+
+    # return
+    return markup.strip()
+
 def body(message):
 
-    # part iterate
-    for part in message.walk():
+    # plain part
+    part = message.get_body(preferencelist = ('plain',))
 
-        # part check
-        if part.get_content_type() != 'text/plain':
-            continue
+    # plain check
+    if part != None:
+        return part.get_content() or ''
 
-        # payload
-        payload = part.get_content()
+    # html part
+    part = message.get_body(preferencelist = ('html',))
 
-        # return
-        return payload or ''
+    # html check
+    if part != None:
+        return text(part.get_content() or '')
 
     # return
     return ''
