@@ -35,6 +35,9 @@ install:
 logs:
 	docker compose logs -f
 
+process:
+	@python bin/milton worker process "${MILTON_CLI_WORKER_ADDRESS}" "${MILTON_CLI_WORKER_SCHEDULE}" --preserve-inbox
+
 restart:
 	make stop
 	make start

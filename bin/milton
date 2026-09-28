@@ -1,0 +1,143 @@
+#!/usr/bin/python3
+#
+#   bin/milton
+#
+import argparse
+import logging
+import os
+import sys
+
+
+#
+#   path
+#
+DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(DIR, '..', 'src'))
+
+# service dir[s]
+for service in ['receiver', 'worker', 'dispatcher']:
+    sys.path.insert(0, os.path.join(DIR, '..', 'src', service))
+
+
+#
+#   import[s]
+#
+from shared import util
+from task import list_schedules, process
+
+
+#
+#   var[s]
+#
+EMAILS = '/etc/milton/emails'
+
+
+#
+#   logging
+#
+logging.basicConfig(
+    level = logging.INFO
+)
+
+
+#
+#   command[s]
+#
+def worker_process(args):
+
+    # address[s]
+    if args.address == None:
+        addresses = util.emails(EMAILS)
+    else:
+        addresses = [args.address]
+
+    # ok
+    ok = True
+
+    # address iterate
+    for address in addresses:
+
+        # address check
+        if not util.valid(EMAILS, address):
+            logging.warning(f"[{address}] not accepted")
+            ok = False
+            continue
+
+        # schedule[s]
+        if args.schedule == None:
+            schedules = list_schedules(EMAILS, address)
+        else:
+            schedules = [args.schedule]
+
+        # schedule iterate
+        for schedule in schedules:
+
+            # log
+            logging.info(f"[{address}] [{schedule}] process")
+
+            # process guard
+            try:
+                process(EMAILS, address, schedule, preserve_inbox = args.preserve_inbox)
+            except Exception as error:
+                logging.error(f"[{address}] [{schedule}] failed[{error}]")
+                ok = False
+
+    # return
+    return ok
+
+
+#
+#   parser
+#
+parser = argparse.ArgumentParser(
+    prog        = 'milton',
+    description = 'run milton service commands on demand'
+)
+
+# service[s]
+service = parser.add_subparsers(dest = 'service', required = True)
+
+# worker
+worker = service.add_parser('worker', help = 'mail processing commands')
+worker_command = worker.add_subparsers(dest = 'command', required = True)
+
+# worker process
+worker_process_parser = worker_command.add_parser(
+    'process',
+    help = 'run the prompt over the inbox for an address and schedule'
+)
+
+worker_process_parser.add_argument(
+    'address',
+    nargs   = '?',
+    default = None,
+    help    = 'address folder; every address when omitted'
+)
+
+worker_process_parser.add_argument(
+    'schedule',
+    nargs   = '?',
+    default = None,
+    help    = 'schedule folder; every schedule when omitted'
+)
+
+worker_process_parser.add_argument(
+    '--preserve-inbox',
+    action = 'store_true',
+    help   = 'leave the inbox in place instead of archiving it'
+)
+
+worker_process_parser.set_defaults(run = worker_process)
+
+
+#
+#   run
+#
+args = parser.parse_args()
+
+# run
+ok = args.run(args)
+
+# ok check
+if not ok:
+    sys.exit(1)

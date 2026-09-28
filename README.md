@@ -47,7 +47,15 @@ make develop [receiver worker dispatcher]   run services locally (all three by d
 make seed ADDR=you@example.com     create a new address
 make start                         build and start the stack
 make logs                          follow service logs
+bin/milton worker process [address] [schedule] [--preserve-inbox]   process on demand
 ```
+
+`bin/milton` runs a service command on demand (`milton <service> <command>`).
+`worker process` runs `task.process` once — for every address and every
+schedule unless one is named — and `--preserve-inbox` leaves the batch in
+`mail/inbox` instead of moving it to `mail/archive`, so the report in
+`mail/outbox/<id>/message.html` can be previewed locally without consuming the
+mail. set `MILTON_WORKER_API_KEY` first.
 
 #
 #   env

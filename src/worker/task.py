@@ -248,7 +248,7 @@ def generate(prompt, context, bodies):
 #
 #   process
 #
-def process(root, user, schedule):
+def process(root, user, schedule, preserve_inbox = False):
 
     # inbox path
     inbox = f"{root}/{user}/mail/inbox"
@@ -348,15 +348,18 @@ def process(root, user, schedule):
     with open(f"{outbox}/properties.json", 'w') as fp:
         json.dump(data, fp)
 
-    # archive make
-    archive = f"{root}/{user}/mail/archive"
-    os.makedirs(archive, exist_ok = True)
+    # archive check
+    if not preserve_inbox:
 
-    # archive iterate
-    for path in paths:
+        # archive make
+        archive = f"{root}/{user}/mail/archive"
+        os.makedirs(archive, exist_ok = True)
 
-        # archive move
-        os.rename(path, f"{archive}/{os.path.basename(path)}")
+        # archive iterate
+        for path in paths:
+
+            # archive move
+            os.rename(path, f"{archive}/{os.path.basename(path)}")
 
     # log
     logging.info(f"[{user}] [{schedule}] reported[{len(bodies)}]")

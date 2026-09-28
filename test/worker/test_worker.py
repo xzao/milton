@@ -662,3 +662,68 @@ def test_process_missing_prompt_raises(tmp_path):
     # raises
     with pytest.raises(Exception, match = 'prompt missing'):
         process(root, 'alice@example.com', 'weekly')
+
+
+def test_process_preserve_inbox_leaves_mail(tmp_path, monkeypatch):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # user make
+    user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
+
+    # message make
+    id = message_make(root, 'alice@example.com')
+
+    # model make
+    model_make(monkeypatch)
+
+    # process
+    process(root, 'alice@example.com', 'daily', preserve_inbox = True)
+
+    # inbox keep
+    assert os.listdir(f"{root}/alice@example.com/mail/inbox") == [id]
+
+    # archive keep
+    assert os.listdir(f"{root}/alice@example.com/mail/archive") == []
+
+    # outbox
+    outbox = f"{root}/alice@example.com/mail/outbox"
+
+    # report count
+    assert len(os.listdir(outbox)) == 1
+
+    # message file
+    with open(f"{outbox}/{os.listdir(outbox)[0]}/message.html", encoding = 'utf-8') as fp:
+        assert fp.read() == '<p>stub report</p>'
+
+
+def test_process_preserve_inbox_multiples(tmp_path, monkeypatch):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # user make
+    user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
+
+    # item[s]
+    ids = []
+
+    # message[s] make
+    for _ in range(3):
+        ids.append(message_make(root, 'alice@example.com'))
+
+    # model make
+    model_make(monkeypatch)
+
+    # process
+    process(root, 'alice@example.com', 'daily', preserve_inbox = True)
+
+    # inbox keep
+    assert sorted(os.listdir(f"{root}/alice@example.com/mail/inbox")) == sorted(ids)
+
+    # archive keep
+    assert os.listdir(f"{root}/alice@example.com/mail/archive") == []
+
+    # report count
+    assert len(os.listdir(f"{root}/alice@example.com/mail/outbox")) == 1

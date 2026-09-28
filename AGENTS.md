@@ -38,9 +38,11 @@ milton/
 │       ├── util.py          env helpers + address inference
 │       ├── mail.py          email parse / body / attachments
 │       └── uuid7.py         uuidv7 generator
+├── bin/
+│   └── milton               developer command (service + command front door)
 ├── test/
 │   ├── conftest.py          adds src/ to sys.path for imports
-│   └── receiver/  worker/  dispatcher/  shared/
+│   └── receiver/  worker/  dispatcher/  shared/  milton/
 ├── mnt/                     runtime data — not committed (linked/mounted at /etc/milton)
 ├── Makefile
 ├── Dockerfile
@@ -51,13 +53,20 @@ milton/
 
 Rules:
 
-- Code lives under `src/`; data lives under `mnt/`.
+- Code lives under `src/`; developer commands under `bin/`; data lives under
+  `mnt/`.
 - Three services, one per directory, each with its own `main.py` and
   `requirements.txt`.
 - `src/shared/` holds code used by more than one service; it is copied into
   every image and importable via `PYTHONPATH=src` in development.
 - Each `main.py` is a **script**, not a module: it runs at import time. Do **not**
   add an `if __name__ == '__main__':` guard.
+- `bin/milton` is the developer front door: `milton <service> <command>
+  [flag ...]`, one nested subparser per service and command, dispatched through
+  `set_defaults(run = ...)` with a `#   command[s]` function per command named
+  `<service>_<command>`. It is a script like `main.py` (no `__main__` guard) and
+  bootstraps `sys.path` in a `#   path` section before its imports. It is never
+  copied into an image and no service imports it.
 - A service may carry one service-local importable module beside its `main.py`
   (`handler.py`, `task.py`, `message.py`) when its logic needs tests. Such a
   module does no work at import, takes `root` instead of reading the data tree
@@ -391,7 +400,9 @@ Three services share one data tree under `/etc/milton`. Each is one directory un
   chat-completions model (`task.model`, openrouter by default) for the html
   body — writes a single `mail/outbox/<uuid7>/message.html` +
   `properties.json` (to/subject/cc/bcc from the address `properties.json`),
-  and archives the batch.
+  and archives the batch. `task.process(root, user, schedule, preserve_inbox =
+  True)` leaves the batch in `mail/inbox` — what `bin/milton worker process
+  --preserve-inbox` uses to preview a report locally.
 - **dispatcher** — scans each user's `mail/outbox`, validates the recipient,
   sends `message.html` with amazon ses (`message.py` builds the destination and
   content from `properties.json`), and moves the report to `mail/sent`. `send`
@@ -492,7 +503,7 @@ introduce a `src` package or relative imports that assume one.
 #
 
 Tests live under `test/`, one folder per component (`receiver/`, `worker/`,
-`dispatcher/`, `shared/`), plus `test/conftest.py` which puts `src/` on
+`dispatcher/`, `shared/`, `milton/`), plus `test/conftest.py` which puts `src/` on
 `sys.path` so tests can `from shared import ...`. A component that carries its
 own importable module adds a folder `conftest.py` putting `src/<service>` on
 `sys.path` (`test/receiver/`, `test/worker/`, `test/dispatcher/`), so tests can
