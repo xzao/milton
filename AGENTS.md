@@ -28,7 +28,7 @@ milton/
 │   ├── worker/
 │   │   ├── main.py          scheduler + prompt loop entrypoint
 │   │   ├── task.py          prompt run logic (importable / testable)
-│   │   └── requirements.txt scheduler
+│   │   └── requirements.txt openai, scheduler
 │   ├── dispatcher/
 │   │   ├── main.py          ses sender entrypoint
 │   │   ├── message.py       ses destination / content (importable / testable)
@@ -42,12 +42,16 @@ milton/
 │   └── milton               developer command (service + command front door)
 ├── test/
 │   ├── conftest.py          adds src/ to sys.path for imports
-│   └── receiver/  worker/  dispatcher/  shared/  milton/
+│   └── receiver/  worker/  dispatcher/  shared/
 ├── mnt/                     runtime data — not committed (linked/mounted at /etc/milton)
+├── .devcontainer/           devcontainer (runs `make install`)
 ├── Makefile
 ├── Dockerfile
 ├── docker-compose.yml
+├── pyrightconfig.json       editor import paths (src + each service dir)
 ├── .env.sample
+├── .dockerignore
+├── .gitignore
 └── README.md
 ```
 
@@ -82,8 +86,9 @@ Rules:
 #   file[s]
 #
 
-Every text file — Python, Makefile, Dockerfile, and any new one — opens with a
-banner naming the file path, then a blank line (two in Python):
+Every Python file, the Makefile, the Dockerfile and `bin/milton` opens with a
+banner naming the file path. In Python the imports follow the banner directly,
+with no blank line, and two blank lines close the import block:
 
 ```python
 #
@@ -100,6 +105,10 @@ import logging
 
 - The banner is a bare `#`, then `#   <path>`, then `#`.
 - Paths are relative to the repo root, using `/`.
+- `bin/milton` keeps its `#!/usr/bin/python3` shebang above the banner.
+- Data and config files carry no banner: `docker-compose.yml`,
+  `pyrightconfig.json`, `requirements.txt`, `.env.sample`. The ignore files use
+  one short `# <group>` comment above each group of patterns.
 - Python files use a plain `#`. The Makefile uses `#` + TAB for sections
   (`#\tMakefile`). Match whichever file you are in.
 
@@ -120,7 +129,8 @@ Sections split a file into named blocks. Every section is:
 - Add a **`[s]` suffix when the section may hold more than one item**:
   `var[s]`, `get[s]`, `attachment[s]`, `service[s]`, `target[s]`. Singular when
   it holds one: `logging`, `loop`, `handler`, `controller`, `send`, `process`,
-  `register`, `interval`, `list`, `prompt`, `working`, `command`.
+  `register`, `interval`, `list`, `model`, `generate`, `path`, `parser`,
+  `run`, `working`, `command`.
 - Sections are separated by **two blank lines**.
 - Sections run top-to-bottom in dependency order. The established order is:
 
@@ -129,16 +139,22 @@ Sections split a file into named blocks. Every section is:
   | `src/receiver/main.py` | `var[s]` → `logging` → `controller` → `loop` |
   | `src/receiver/handler.py` | `handler` |
   | `src/worker/main.py` | `var[s]` → `logging` → `dir[s]` → `register` → `loop` |
-  | `src/worker/task.py` | `interval` → `list` → `get[s]` → `model` → `generate` → `process` |
+  | `src/worker/task.py` | `interval` → `get[s]` → `list` → `model` → `generate` → `process` |
   | `src/dispatcher/main.py` | `var[s]` → `logging` → `dir[s]` → `send` → `loop` |
+  | `src/dispatcher/message.py` | `address` → `destination` → `content` |
   | `src/shared/util.py` | `env[s]` → `email[s]` |
   | `src/shared/mail.py` | `parse` → `body` → `attachment[s]` |
   | `src/shared/uuid7.py` | `new` |
   | `Dockerfile` | `working` → `service` → `requirement[s]` → `src` → `command` |
-  | `Makefile` | `env[s]` → `target[s]` |
+  | `bin/milton` | `path` → `import[s]` → `var[s]` → `logging` → `command[s]` → `parser` → `run` |
+  | `Makefile` | `env[s]` → `target[s]` → `arg[s]` |
+  | `test/conftest.py`, `test/<service>/conftest.py` | `var[s]` → `path` |
+  | `test/<component>/test_*.py` | `make[s]` (tree / stub builders) → `test[s]` |
 
-- The header banner is a section too — but it is separated from the imports by
-  only the standard blank lines, never by a second banner.
+- The header banner is a section too, but no `import[s]` banner follows it: the
+  imports sit directly under the header. `bin/milton` is the exception — it must
+  fix `sys.path` first, so there the imports get their own `#   import[s]`
+  section after `#   path`.
 
 
 #
@@ -153,10 +169,14 @@ Rules:
 
 - The comment is a terse fragment — a noun phrase or bare verb. Lowercase.
   No full stop. No trailing punctuation. Never a sentence.
-- Common vocabulary: `# value`, `# value none`, `# return`, `# folder iterate`,
-  `# message read`, `# message parse`, `# report`, `# outbox make`,
-  `# archive move`, `# ses send`, `# send guard`, `# sleep`, `# dir make`,
+- Common vocabulary: `# value`, `# value check`, `# path`, `# path check`,
+  `# return`, `# log`, `# folder iterate`, `# message read`, `# message parse`,
+  `# outbox make`, `# archive move`, `# sent move`, `# ses send`,
+  `# send guard`, `# process guard`, `# sleep`, `# dir make`,
   `# address check`, `# to check`, `# to valid check`.
+- The shape is `<noun>` for an assignment and `<noun> <verb>` for an action:
+  `check` for a test, `iterate` for a loop, `read` / `make` / `move` for file
+  work, `guard` for a `try`.
 - Use the `[s]` suffix on the trailing noun when the step touches a collection:
   `# item[s]`, `# folder iterate`, `# part iterate`.
 - `# return` goes directly above the `return` in any function with more than a
@@ -173,8 +193,8 @@ def env_int(name, default):
     # value
     value = os.getenv(name)
 
-    # value none
-    if value == None:
+    # value check
+    if not value:
         return default
 
     # return
@@ -187,13 +207,20 @@ def env_int(name, default):
 #
 
 - `def name(params):` is always followed by a **blank line** before the first
-  step comment. Never a docstring — the step comments replace it.
+  step comment. Never a docstring — the step comments replace it. The one
+  exception is the `Handler.__init__` two-liner, which has no blank line and no
+  step comments.
+- Small helpers used by one section live in that section, above the function
+  that uses them (`text_cut` and `html_extract` sit in `#   generate`,
+  `get_text` heads `#   get[s]`).
 - Handle exceptions with `raise Exception('<lowercase message>')`. Messages are
   lowercase, unpunctuated, and use bracket context where useful:
   `raise Exception('report missing recipient')`,
   `raise Exception(f"invalid recipient '{to}'")`.
-- Return `None` when nothing applies (`return None`). Return `True`/`False` for
-  success/failure of a mutation (`return True` on a successful send).
+- Return `None` when nothing applies (`return None`), `''` / `[]` when an empty
+  text or list is the natural answer (`get_text`, `util.emails`). Return
+  `True`/`False` for success/failure of a mutation (`return True` on a
+  successful send, `ok` from a `bin/milton` command).
 - Type hints are **rare and optional**. Do not annotate unless a wire-facing
   helper genuinely benefits.
 - No decorators, no classes except the `receiver` handler, no `__all__`, no
@@ -221,7 +248,7 @@ SES_REGION = util.env('MILTON_DISPATCHER_SES_REGION')
 
 ```python
 controller = Controller(
-    Handler,
+    Handler(EMAILS),
     hostname = '0.0.0.0',
     port     = PORT
 )
@@ -242,8 +269,10 @@ items.append({
 
 ```python
 data = {
-    "to": user,
-    "subject": schedule
+    "to": to,
+    "subject": subject,
+    "cc": cc,
+    "bcc": bcc
 }
 ```
 
@@ -265,13 +294,14 @@ banner and the block, then **two blank lines** after the block.
 
 Order:
 
-1. First-party / relative imports first (`from shared import ...`,
-   `from . import ...`).
-2. Then the standard library and third-party modules in one alphabetical block
-   (`boto3`, `datetime`, `email`, `functools`, `json`, `logging`, `os`,
-   `scheduler`, `time`, `aiosmtpd`).
+1. `from x import y` lines first — `shared`, the service's own module, and any
+   third-party class (`from aiosmtpd.controller import Controller`), or
+   `from . import ...` inside `shared/__init__.py`.
+2. Then every plain `import x` — standard library and third-party together — in
+   one alphabetical block (`argparse`, `boto3`, `datetime`, `email`,
+   `functools`, `json`, `logging`, `openai`, `os`, `scheduler`, `sys`, `time`).
 
-One module per line. `import x`, not `from x import *`. No import sorting tools
+One module per `import` line. Never `from x import *`. No import sorting tools
 — the order above is intentional and stable.
 
 A service's own modules (e.g. `src/receiver/handler.py`) are imported bare —
@@ -284,10 +314,9 @@ directory is on the path at runtime (the script's own directory, or
 #
 #   src/worker/main.py
 #
-from shared import mail, util, uuid7
-import datetime
+from shared import util
+from task import interval, list_schedules, process
 import functools
-import json
 import logging
 import os
 import scheduler
@@ -302,7 +331,7 @@ import time
 - **Defaults to single quotes** for paths, env names and plain strings:
   `'/etc/milton/emails'`, `'MILTON_WORKER_INTERVAL'`, `'0.0.0.0'`.
 - **Double quotes only for wire-format / JSON payloads**: `"to"`, `"subject"`,
-  `"type": "A"`. Keep that split.
+  `"role": "system"`, `"ToAddresses"`. Keep that split.
 - f-strings for every interpolation: `f"{EMAILS}/{user}/mail/inbox"`. No `%` or
   `.format()`.
 - Booleans are `True` / `False`. Collections are plain `{}` / `[]` — no
@@ -319,12 +348,16 @@ import time
 - Module-level constants are `SCREAMING_SNAKE_CASE`: `EMAILS`, `PORT`, `TICK`,
   `SES_FROM`.
 - Function prefixes carry meaning and should be reused:
-  - `get_*` — fetch a scalar (`get_prompt`, `get_context`).
+  - `get_*` — fetch one value (`get_text`, `get_prompt`, `get_context`,
+    `get_properties(root, user, section)`, `get_key`).
   - `list_*` — fetch many, return a list (`list_schedules`).
   - `emails` / `valid` — infer valid addresses from the data tree.
+  - `<noun>_<verb>` — a small transform (`text_cut`, `html_extract`); in tests,
+    a tree / stub builder (`user_make`, `message_make`, `model_make`).
+  - `<service>_<command>` — a `bin/milton` command (`worker_process`).
 - The one class is the `receiver` `Handler`; its instances are lowercase.
-- Avoid abbreviations that are not already in the codebase (`fp`, `id`, `raw`
-  are all established — use them).
+- Avoid abbreviations that are not already in the codebase (`fp`, `id`, `raw`,
+  `sub` are all established — use them). Caught exceptions are `error`.
 
 
 #
@@ -335,30 +368,37 @@ import time
   codebase and intentional to the style:
 
 ```python
-if value == None:
-    return default
+if key == None:
+    raise Exception('model key missing')
 ```
 
-- One-line guard clauses are welcome, with the statement on the same line:
+- Use `if not x:` for falsy checks, as in `if not os.path.isdir(root):` and
+  `if not value:` for an unset env var.
+- Guard clauses keep their body on its own indented line, under their own step
+  comment — `continue`, `return None`, `return default` or `raise`:
 
 ```python
-if not util.valid(EMAILS, address): return '550 not accepted'
+# dir check
+if not os.path.isdir(path):
+    continue
 ```
 
-- Use `if not x:` for falsy checks, as in `if not os.path.isdir(root):`.
 - `None` is returned explicitly (`return None`); an implicit bare `return` is
   only used where the code already does so.
-- No `match`, no ternary expressions, no comprehensions beyond the existing
-  trivial `[line.rstrip() for line in fp]`.
+- No `match`, no ternary expressions, no comprehensions — build lists with an
+  `# item[s]` / `append` loop. A default is an `or` fallback
+  (`section.get('to') or user`) or an `if` / `else` block.
 - Loops are the outer shape of every service: each `main.py` ends in a
   `while True:` … `time.sleep(...)` with the sleep as the last step (`# sleep`).
+  The receiver is the exception — aiosmtpd runs in its own thread, so its loop
+  is a bare `while True: time.sleep(3600)` keep-alive.
 
 
 #
 #   logging
 #
 
-- Configured once, in each `main.py`, as its own section:
+- Configured once, in each `main.py` (and `bin/milton`), as its own section:
 
 ```python
 logging.basicConfig(
@@ -371,8 +411,9 @@ logging.basicConfig(
 
 ```python
 logging.info(f"[{id}] received[{envelope.mail_from}] to[{address}]")
-logging.info(f"[{user}] [{schedule}] processed[{name}]")
-logging.info(f"[{id}] sent[{to}]")
+logging.info(f"[{user}] [{schedule}] reported[{len(bodies)}]")
+logging.info(f"[{id}] sent[{to}] message[{message_id}]")
+logging.error(f"[{name}] failed[{error}]")
 ```
 
 - `logging.info` for state changes, `logging.debug` for the quiet loop detail,
@@ -392,17 +433,24 @@ Three services share one data tree under `/etc/milton`. Each is one directory un
   when there is no `handle_RCPT` hook — then writes `message.eml` +
   attachments into `mail/inbox/<uuid7>/`, logging rejected addresses and save
   failures.
-- **worker** — registers one `scheduler` job per `prompt/<schedule>/prompt.md`
-  and runs them via `scheduler.exec_jobs()`. Each run is
-  `task.process(root, user, schedule)`: it reads the prompt and the user's
-  context, reads **every** message in `mail/inbox` in one batch and calls
-  `generate(prompt, context, bodies)` once — which asks the configured
-  chat-completions model (`task.model`, openrouter by default) for the html
-  body — writes a single `mail/outbox/<uuid7>/message.html` +
-  `properties.json` (to/subject/cc/bcc from the address `properties.json`),
-  and archives the batch. `task.process(root, user, schedule, preserve_inbox =
+- **worker** — registers one `scheduler` job per schedule in the address
+  `properties.json` `schedules` list and runs them via `scheduler.exec_jobs()`.
+  Each run is `task.process(root, user, schedule)`: it reads the shared prompt
+  and the user's context, reads **every** message in `mail/inbox` in one batch
+  and calls `generate(prompt, context, messages)` once. The model sees tagged
+  blocks — `<mail>` of `<message id from to date subject attachments>`, then
+  `<context>`, then `<prompt>` last, each file a `<file path="prompt/…">` —
+  and a system message naming each block's role. `generate` cuts the mail and
+  context (never the prompt) to `MILTON_WORKER_INPUT_LIMIT` characters and asks
+  the configured
+  chat-completions model (`task.model`, openai client against openrouter by
+  default, reply capped at `MILTON_WORKER_MAX_TOKENS`) for the html body —
+  writes a single `mail/outbox/<uuid7>/message.html` + `properties.json`
+  (to/subject/cc/bcc from the address `properties.json` `mail` section), and
+  archives the batch. `task.process(root, user, schedule, preserve_inbox =
   True)` leaves the batch in `mail/inbox` — what `bin/milton worker process
-  --preserve-inbox` uses to preview a report locally.
+  [address] --preserve-inbox` (and `make process`) uses to preview a report
+  locally, with the fixed schedule label `preview`.
 - **dispatcher** — scans each user's `mail/outbox`, validates the recipient,
   sends `message.html` with amazon ses (`message.py` builds the destination and
   content from `properties.json`), and moves the report to `mail/sent`. `send`
@@ -413,7 +461,9 @@ Three services share one data tree under `/etc/milton`. Each is one directory un
 
 Adding a service means: create `src/<name>/main.py` + `requirements.txt`, add
 the `from shared import ...` line, and add a `build.args.SERVICE` block to
-`docker-compose.yml`.
+`docker-compose.yml`. Then list it wherever the three services are listed:
+the `pip install -r` lines and the `develop` default in the `Makefile`, the
+service dir loop in `bin/milton`, and `extraPaths` in `pyrightconfig.json`.
 
 
 #
@@ -426,20 +476,24 @@ linked to `/etc/milton` in the devcontainer and bind-mounted at `/etc/milton`
 by compose:
 
 ```
-/etc/milton/emails/<email>/properties.json  address properties (mail to/subject/cc/bcc)
+/etc/milton/emails/<email>/properties.json  address properties (mail, schedules sections)
 /etc/milton/emails/<email>/mail             inbox / outbox / sent / archive
 /etc/milton/emails/<email>/context          read-only context files
-/etc/milton/emails/<email>/prompt           <schedule>/prompt.md per schedule
+/etc/milton/emails/<email>/prompt           prompt text — every file, shared by all schedules
 ```
 
-`properties.json` at the address root holds the address's mail settings; its
-`mail` section (`to`, `subject`, `cc`, `bcc`) is copied into every
-`mail/outbox/<uuid7>/properties.json` the worker writes and applied by the
-dispatcher. `to` defaults to the address, `subject` to the schedule.
+`properties.json` at the address root holds the address settings, one section
+per concern. Its `mail` section (`to`, `subject`, `cc`, `bcc`) is copied into
+every `mail/outbox/<uuid7>/properties.json` the worker writes and applied by the
+dispatcher; `to` defaults to the address, `subject` to the schedule. Its
+`schedules` section lists the schedules to run — a schedule exists when it is
+listed.
 
 A `<email>` is valid when its `mail/` folder exists. `util.emails(EMAILS)` lists
-them; `util.valid(EMAILS, address)` checks one. The schedule folder names are
-interval tokens: `5m`, `30m`, `1h`, `daily`, `weekly`.
+them; `util.valid(EMAILS, address)` checks one. The `schedules` entries are
+interval tokens: `5m`, `30m`, `1h`, `daily`, `weekly`. All schedules share one
+prompt: `prompt/` is read like `context/` — every file under it, sorted, each
+wrapped in a `<file path="prompt/…">` block, is the prompt.
 
 Environment variables carry a **project prefix**:
 
@@ -451,17 +505,26 @@ MILTON_WORKER_INTERVAL
 MILTON_WORKER_API_KEY
 MILTON_WORKER_API_URL
 MILTON_WORKER_MODEL
+MILTON_WORKER_INPUT_LIMIT
+MILTON_WORKER_MAX_TOKENS
 MILTON_DISPATCHER_INTERVAL
 MILTON_DISPATCHER_SES_FROM
 MILTON_DISPATCHER_SES_REGION
+MILTON_CLI_WORKER_ADDRESS
 ```
+
+`MILTON_CLI_*` variables feed developer commands only (`make process` passes
+`MILTON_CLI_WORKER_ADDRESS` to `bin/milton worker process`); no service reads
+them. Every variable has a default in code (`util.env` / `util.env_int`),
+and an empty value counts as unset.
 
 the dispatcher's ses client also reads the standard `AWS_ACCESS_KEY_ID`,
 `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` and `AWS_DEFAULT_REGION`
 variables through boto3.
 
 `.env.sample` is the committed template: bare `KEY=` lines, no values, no
-quotes, one per line.
+quotes, one per line, sorted alphabetically. `make` copies it to `.env` when
+`.env` is missing.
 
 
 #
@@ -470,15 +533,24 @@ quotes, one per line.
 
 The Makefile mirrors the file style: banner, `#` + TAB section banners, two
 blank lines between sections, TAB-indented recipes, and a leading `@` when the
-recipe just runs something (`@python src/receiver/main.py`, `@clear`).
+recipe just runs something (`@python bin/milton ...`, `@clear`, `@git pull`).
+`.DEFAULT_GOAL` is `logs`; every target belongs in `.PHONY`.
 
 Targets are one lowercase word and alphabetical inside `#\ttarget[s]`:
-`develop`, `install`, `logs`, `restart`, `seed`, `shell`, `start`, `stop`,
-`test`, plus a `%` catch-all (`arg[s]`) that accepts extra goal arguments.
-`develop [service ...]` runs the listed services concurrently in dev
-(`receiver`, `worker`, `dispatcher` — all three by default). `test
-[component/...]` runs one test folder. `seed ADDR=you@example.com` creates a
-new address folder.
+`develop`, `install`, `logs`, `process`, `restart`, `seed`, `shell`, `start`,
+`stop`, `test`, `upgrade`, `version`. A `%` catch-all in its own last section,
+`#\targ[s]`, swallows extra goal arguments so targets can read them from
+`$(MAKECMDGOALS)`:
+
+- `develop [service ...]` runs the listed services concurrently in dev
+  (`receiver`, `worker`, `dispatcher` — all three by default);
+- `process` previews a report for `MILTON_CLI_WORKER_ADDRESS` (every address
+  when empty) without consuming the inbox;
+- `seed ADDR=you@example.com` creates a new address folder with `mail/`,
+  `context/`, a `prompt/prompt.md` and a `properties.json` scheduled `daily`;
+- `test [component ...]` runs one test folder (all of `test/` by default);
+- `upgrade` pulls and rebuilds the stack; `version <x.y.z>` writes `VERSION`,
+  commits and tags `v<x.y.z>` on a clean tree.
 
 The Dockerfile keeps `#   working` → `#   service` → `#   requirement[s]` →
 `#   src` → `#   command`, FROM `python:3.10`, `WORKDIR /app`, a build `ARG
@@ -503,7 +575,8 @@ introduce a `src` package or relative imports that assume one.
 #
 
 Tests live under `test/`, one folder per component (`receiver/`, `worker/`,
-`dispatcher/`, `shared/`, `milton/`), plus `test/conftest.py` which puts `src/` on
+`dispatcher/`, `shared/`; `milton/` for `bin/milton` once it has tests), plus
+`test/conftest.py` which puts `src/` on
 `sys.path` so tests can `from shared import ...`. A component that carries its
 own importable module adds a folder `conftest.py` putting `src/<service>` on
 `sys.path` (`test/receiver/`, `test/worker/`, `test/dispatcher/`), so tests can
@@ -512,8 +585,12 @@ Makefile: `make install` installs it, `make test` runs all of `test/`, and
 `make test <component>/...` runs one folder. Therefore:
 
 - keep pytest; do not add unittest / nose / tox;
-- name files `test_<module>.py` and tests `test_<behaviour>`;
-- write tests in this same banner-and-step style;
+- name files `test_<component>.py` (plus `test_<module>.py` for a second
+  module, as `test_message.py`) and tests `test_<function>_<behaviour>`
+  (`test_get_prompt_missing_raises`);
+- write tests in this same banner-and-step style, with builders in `#   make[s]`
+  and tests in `#   test[s]`;
+- stub the model and env with pytest's `monkeypatch` — no network calls;
 - tests must run without starting any service (no servers, no sockets);
 - tests must pass on a fresh repo — build every tree they need under
   `tmp_path`, never under `/etc/milton` or `mnt/`;
@@ -533,15 +610,18 @@ Before finishing any change:
       above its `return`;
 - [ ] `=`, `:`, and keyword arguments are aligned in every contiguous block;
 - [ ] single quotes, except JSON payload dicts;
-- [ ] `== None` (never `is None`), one-line guards,
+- [ ] `== None` (never `is None`), guards under their own step comment,
       `Exception('lowercase message')`;
 - [ ] two blank lines around section banners, one blank line between functions
       inside a section (`util.py`, `task.py`);
+- [ ] AGENTS.md and README.md still match the change (layout, section order,
+      env vars, make targets, data tree);
 - [ ] no docstrings, no `__main__` guard, no `print`;
 - [ ] no new dependency without a reason, and any new one is added to the
       service's `requirements.txt`;
-- [ ] no formatter run; imports are first-party first;
-- [ ] `python -m py_compile` passes for every touched file.
+- [ ] no formatter run; `from` imports first, then `import` alphabetical;
+- [ ] `python -m py_compile` passes for every touched file, and `make test`
+      passes.
 
 
 #
@@ -563,7 +643,7 @@ import time
 #
 #   var[s]
 #
-ROOT = '/etc/milton/emails'
+EMAILS = '/etc/milton/emails'
 
 
 #
@@ -580,14 +660,13 @@ logging.basicConfig(
 while True:
 
     # user iterate
-    for user in util.emails(ROOT):
+    for user in util.emails(EMAILS):
         logging.info(f"[{user}] tick")
 
     # sleep
     time.sleep(1)
 ```
 
-Then wire it into `docker-compose.yml` with a `build.args.SERVICE` block.
-
+Then wire it in as described under `#   service[s]`.
 
 

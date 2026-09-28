@@ -23,13 +23,14 @@ for service in ['receiver', 'worker', 'dispatcher']:
 #   import[s]
 #
 from shared import util
-from task import list_schedules, process
+from task import process
 
 
 #
 #   var[s]
 #
 EMAILS = '/etc/milton/emails'
+LABEL  = 'preview'
 
 
 #
@@ -63,24 +64,15 @@ def worker_process(args):
             ok = False
             continue
 
-        # schedule[s]
-        if args.schedule == None:
-            schedules = list_schedules(EMAILS, address)
-        else:
-            schedules = [args.schedule]
+        # log
+        logging.info(f"[{address}] [{LABEL}] process")
 
-        # schedule iterate
-        for schedule in schedules:
-
-            # log
-            logging.info(f"[{address}] [{schedule}] process")
-
-            # process guard
-            try:
-                process(EMAILS, address, schedule, preserve_inbox = args.preserve_inbox)
-            except Exception as error:
-                logging.error(f"[{address}] [{schedule}] failed[{error}]")
-                ok = False
+        # process guard
+        try:
+            process(EMAILS, address, LABEL, preserve_inbox = args.preserve_inbox)
+        except Exception as error:
+            logging.error(f"[{address}] [{LABEL}] failed[{error}]")
+            ok = False
 
     # return
     return ok
@@ -104,7 +96,7 @@ worker_command = worker.add_subparsers(dest = 'command', required = True)
 # worker process
 worker_process_parser = worker_command.add_parser(
     'process',
-    help = 'run the prompt over the inbox for an address and schedule'
+    help = 'run the prompt over the inbox for an address, once per address'
 )
 
 worker_process_parser.add_argument(
@@ -112,13 +104,6 @@ worker_process_parser.add_argument(
     nargs   = '?',
     default = None,
     help    = 'address folder; every address when omitted'
-)
-
-worker_process_parser.add_argument(
-    'schedule',
-    nargs   = '?',
-    default = None,
-    help    = 'schedule folder; every schedule when omitted'
 )
 
 worker_process_parser.add_argument(

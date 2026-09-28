@@ -36,7 +36,7 @@ logs:
 	docker compose logs -f
 
 process:
-	@python bin/milton worker process "${MILTON_CLI_WORKER_ADDRESS}" "${MILTON_CLI_WORKER_SCHEDULE}" --preserve-inbox
+	@python bin/milton worker process "${MILTON_CLI_WORKER_ADDRESS}" --preserve-inbox
 
 restart:
 	make stop
@@ -45,9 +45,9 @@ restart:
 seed:
 	@mkdir -p mnt/etc/milton/emails/$(ADDR)/mail
 	@mkdir -p mnt/etc/milton/emails/$(ADDR)/context
-	@mkdir -p mnt/etc/milton/emails/$(ADDR)/prompt/daily
-	@echo 'summarise the new mail as an html email body.' > mnt/etc/milton/emails/$(ADDR)/prompt/daily/prompt.md
-	@echo '{"mail": {"to": "$(ADDR)", "subject": "", "cc": [], "bcc": []}}' > mnt/etc/milton/emails/$(ADDR)/properties.json
+	@mkdir -p mnt/etc/milton/emails/$(ADDR)/prompt
+	@echo 'summarise the new mail as an html email body.' > mnt/etc/milton/emails/$(ADDR)/prompt/prompt.md
+	@echo '{"mail": {"to": "$(ADDR)", "subject": "", "cc": [], "bcc": []}, "schedules": ["daily"]}' > mnt/etc/milton/emails/$(ADDR)/properties.json
 	@sudo chown -R 1000:1000 mnt
 
 shell:

@@ -1,5 +1,12 @@
 {
 	"name": "Milton",
 	"image": "mcr.microsoft.com/devcontainers/python:3-3.14-trixie",
-	"postCreateCommand": "sudo make install"
+	"postCreateCommand": "sudo make install",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-vscode.live-server"
+			]
+		}
+	}
 }

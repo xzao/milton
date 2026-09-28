@@ -3,7 +3,7 @@
 #
 from email.message import EmailMessage
 from shared import uuid7
-from task import generate, get_context, get_key, get_prompt, get_properties, html_extract, interval, list_schedules, process, text_cut
+from task import generate, get_context, get_key, get_message, get_prompt, get_properties, html_extract, interval, list_schedules, process, text_cut
 import datetime
 import json
 import os
@@ -24,14 +24,13 @@ def user_make(root, user, schedule = None, prompt = None):
 
     # prompt make
     if schedule != None:
-        os.makedirs(f"{root}/{user}/prompt/{schedule}", exist_ok = True)
-        with open(f"{root}/{user}/prompt/{schedule}/prompt.md", 'w') as fp:
-            fp.write(prompt)
+        schedules_make(root, user, [schedule])
+        prompt_make(root, user, prompt)
 
     # return
     return user
 
-def message_make(root, user, body = 'hello body'):
+def message_make(root, user, body = 'hello body', subject = 'test'):
 
     # id
     id = uuid7.new()
@@ -44,7 +43,7 @@ def message_make(root, user, body = 'hello body'):
     message = EmailMessage()
     message['From']    = 'sender@example.com'
     message['To']      = user
-    message['Subject'] = 'test'
+    message['Subject'] = subject
     message.set_content(body)
 
     # message file
@@ -56,12 +55,46 @@ def message_make(root, user, body = 'hello body'):
 
 def properties_make(root, user, properties):
 
+    # path
+    path = f"{root}/{user}/properties.json"
+
+    # data
+    data = {}
+
+    # file read
+    if os.path.isfile(path):
+        with open(path) as fp:
+            data = json.load(fp)
+
+    # merge
+    data.update(properties)
+
     # file write
-    with open(f"{root}/{user}/properties.json", 'w') as fp:
-        json.dump(properties, fp)
+    with open(path, 'w') as fp:
+        json.dump(data, fp)
 
     # return
     return properties
+
+def schedules_make(root, user, schedules):
+
+    # properties make
+    properties_make(root, user, {'schedules': schedules})
+
+    # return
+    return schedules
+
+def prompt_make(root, user, text, name = 'prompt.md'):
+
+    # dir make
+    os.makedirs(f"{root}/{user}/prompt", exist_ok = True)
+
+    # file write
+    with open(f"{root}/{user}/prompt/{name}", 'w') as fp:
+        fp.write(text)
+
+    # return
+    return text
 
 def model_make(monkeypatch, html = '<p>stub report</p>'):
 
@@ -109,20 +142,22 @@ def test_interval_unknown_is_daily():
     assert interval('someday') == datetime.timedelta(days = 1)
 
 
-def test_list_schedules_sorted(tmp_path):
+def test_list_schedules_reads_order(tmp_path):
 
     # root
     root = f"{tmp_path}/emails"
 
-    # prompt make
-    for schedule in ['30m', '5m', 'daily']:
-        user_make(root, 'alice@example.com', schedule, 'prompt text')
+    # user make
+    user_make(root, 'alice@example.com')
+
+    # schedules make
+    schedules_make(root, 'alice@example.com', ['30m', '5m', 'daily'])
 
     # assert
     assert list_schedules(root, 'alice@example.com') == ['30m', '5m', 'daily']
 
 
-def test_list_schedules_ignores_files(tmp_path):
+def test_list_schedules_ignores_other_sections(tmp_path):
 
     # root
     root = f"{tmp_path}/emails"
@@ -130,15 +165,14 @@ def test_list_schedules_ignores_files(tmp_path):
     # user make
     user_make(root, 'alice@example.com', 'daily', 'prompt text')
 
-    # file make
-    with open(f"{root}/alice@example.com/prompt/notes.txt", 'w') as fp:
-        fp.write('not a schedule')
+    # properties make
+    properties_make(root, 'alice@example.com', {'loose': 'info'})
 
     # assert
     assert list_schedules(root, 'alice@example.com') == ['daily']
 
 
-def test_list_schedules_empty_without_prompt_dir(tmp_path):
+def test_list_schedules_empty_without_schedules(tmp_path):
 
     # root
     root = f"{tmp_path}/emails"
@@ -156,10 +190,29 @@ def test_get_prompt_reads_text(tmp_path):
     root = f"{tmp_path}/emails"
 
     # user make
-    user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
+    user_make(root, 'alice@example.com')
+
+    # prompt make
+    prompt_make(root, 'alice@example.com', 'summarise the new mail.')
 
     # assert
-    assert get_prompt(root, 'alice@example.com', 'daily') == 'summarise the new mail.'
+    assert get_prompt(root, 'alice@example.com') == '<file path="prompt/prompt.md">\nsummarise the new mail.\n</file>\n'
+
+
+def test_get_prompt_concatenates_sorted(tmp_path):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # user make
+    user_make(root, 'alice@example.com')
+
+    # prompt make
+    for name in ['b.md', 'a.md']:
+        prompt_make(root, 'alice@example.com', name[0], name)
+
+    # assert
+    assert get_prompt(root, 'alice@example.com') == '<file path="prompt/a.md">\na\n</file>\n<file path="prompt/b.md">\nb\n</file>\n'
 
 
 def test_get_prompt_missing_raises(tmp_path):
@@ -168,11 +221,11 @@ def test_get_prompt_missing_raises(tmp_path):
     root = f"{tmp_path}/emails"
 
     # user make
-    user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
+    user_make(root, 'alice@example.com')
 
     # raises
     with pytest.raises(Exception, match = 'prompt missing'):
-        get_prompt(root, 'alice@example.com', 'weekly')
+        get_prompt(root, 'alice@example.com')
 
 
 def test_get_context_concatenates_sorted(tmp_path):
@@ -189,7 +242,7 @@ def test_get_context_concatenates_sorted(tmp_path):
             fp.write(name[0])
 
     # assert
-    assert get_context(root, 'alice@example.com') == 'a\nb\n'
+    assert get_context(root, 'alice@example.com') == '<file path="context/a.md">\na\n</file>\n<file path="context/b.md">\nb\n</file>\n'
 
 
 def test_get_context_walks_nested_dirs(tmp_path):
@@ -208,7 +261,7 @@ def test_get_context_walks_nested_dirs(tmp_path):
         fp.write('roster')
 
     # assert
-    assert get_context(root, 'alice@example.com') == 'roster\n'
+    assert get_context(root, 'alice@example.com') == '<file path="context/team/roster.md">\nroster\n</file>\n'
 
 
 def test_get_context_empty_without_dir(tmp_path):
@@ -221,6 +274,55 @@ def test_get_context_empty_without_dir(tmp_path):
 
     # assert
     assert get_context(root, 'alice@example.com') == ''
+
+
+def test_get_message_reads_headers(tmp_path):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # user make
+    user_make(root, 'alice@example.com')
+
+    # message make
+    id = message_make(root, 'alice@example.com', 'hello body')
+
+    # path
+    path = f"{root}/alice@example.com/mail/inbox/{id}"
+
+    # attachment make
+    with open(f"{path}/attachments/a.pdf", 'wb') as fp:
+        fp.write(b'pdf')
+
+    # text
+    text = get_message(path)
+
+    # assert
+    assert text.startswith(f"<message id=\"{id}\" ")
+    assert 'from="sender@example.com"' in text
+    assert 'to="alice@example.com"' in text
+    assert 'subject="test"' in text
+    assert 'attachments="a.pdf"' in text
+    assert 'hello body' in text
+    assert text.endswith('</message>\n')
+
+
+def test_get_message_escapes_attributes(tmp_path):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # user make
+    user_make(root, 'alice@example.com')
+
+    # message make
+    id = message_make(root, 'alice@example.com', 'hello body', 'say "hi"')
+
+    # text
+    text = get_message(f"{root}/alice@example.com/mail/inbox/{id}")
+
+    # assert
+    assert 'subject="say &quot;hi&quot;"' in text
 
 
 def test_get_properties_reads_mail_section(tmp_path):
@@ -246,10 +348,22 @@ def test_get_properties_reads_mail_section(tmp_path):
     properties_make(root, 'alice@example.com', properties)
 
     # assert
-    assert get_properties(root, 'alice@example.com') == properties['mail']
+    assert get_properties(root, 'alice@example.com', 'mail') == properties['mail']
 
 
-def test_get_properties_empty_without_file(tmp_path):
+def test_get_properties_reads_schedules_section(tmp_path):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # user make
+    user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
+
+    # assert
+    assert get_properties(root, 'alice@example.com', 'schedules') == ['daily']
+
+
+def test_get_properties_none_without_file(tmp_path):
 
     # root
     root = f"{tmp_path}/emails"
@@ -258,10 +372,11 @@ def test_get_properties_empty_without_file(tmp_path):
     user_make(root, 'alice@example.com')
 
     # assert
-    assert get_properties(root, 'alice@example.com') == {}
+    assert get_properties(root, 'alice@example.com', 'mail') == None
+    assert get_properties(root, 'alice@example.com', 'schedules') == None
 
 
-def test_get_properties_empty_without_mail_section(tmp_path):
+def test_get_properties_none_without_section(tmp_path):
 
     # root
     root = f"{tmp_path}/emails"
@@ -273,7 +388,8 @@ def test_get_properties_empty_without_mail_section(tmp_path):
     properties_make(root, 'alice@example.com', {'loose': 'info'})
 
     # assert
-    assert get_properties(root, 'alice@example.com') == {}
+    assert get_properties(root, 'alice@example.com', 'mail') == None
+    assert get_properties(root, 'alice@example.com', 'schedules') == None
 
 
 def test_get_key_reads_env(monkeypatch):
@@ -348,10 +464,9 @@ def test_generate_passes_prompt_context_and_bodies(monkeypatch):
     assert html == '<p>ok</p>'
     assert sent[0][0]['role'] == 'system'
     assert sent[0][1]['role'] == 'user'
-    assert 'prompt text' in content
-    assert 'context text' in content
-    assert 'first' in content
-    assert 'second' in content
+    assert '<mail count="2">\nfirstsecond</mail>' in content
+    assert '<context>\ncontext text</context>' in content
+    assert content.endswith('<prompt>\nprompt text</prompt>\n')
 
 
 def test_generate_empty_html_raises(monkeypatch):
@@ -362,6 +477,29 @@ def test_generate_empty_html_raises(monkeypatch):
     # raises
     with pytest.raises(Exception, match = 'model html empty'):
         generate('prompt', 'context', ['body'])
+
+
+def test_generate_cuts_content_to_input_limit(monkeypatch):
+
+    # env set
+    monkeypatch.setenv('MILTON_WORKER_INPUT_LIMIT', '10')
+
+    # message[s]
+    sent = []
+
+    # model make
+    def model_capture(messages):
+        sent.append(messages)
+        return '<p>ok</p>'
+
+    # model patch
+    monkeypatch.setattr('task.model', model_capture)
+
+    # generate
+    generate('prompt text', 'context text', ['body'])
+
+    # assert
+    assert sent[0][1]['content'] == '<mail coun\n<prompt>\nprompt text</prompt>\n'
 
 
 def test_process_writes_report_and_archives_inbox(tmp_path, monkeypatch):
@@ -506,9 +644,6 @@ def test_process_passes_all_mail_to_generate(tmp_path, monkeypatch):
     # body[s]
     sent = ['first mail', 'second mail', 'third mail']
 
-    # parsed body[s]
-    parsed = ['first mail\n', 'second mail\n', 'third mail\n']
-
     # message[s] make
     for body in sent:
         message_make(root, 'alice@example.com', body)
@@ -533,9 +668,14 @@ def test_process_passes_all_mail_to_generate(tmp_path, monkeypatch):
 
     # assert
     assert len(calls) == 1
-    assert calls[0]['prompt'] == 'summarise the new mail.'
-    assert calls[0]['context'] == 'alice\n'
-    assert sorted(calls[0]['bodies']) == sorted(parsed)
+    assert calls[0]['prompt'] == '<file path="prompt/prompt.md">\nsummarise the new mail.\n</file>\n'
+    assert calls[0]['context'] == '<file path="context/profile.md">\nalice\n</file>\n'
+    assert len(calls[0]['bodies']) == 3
+
+    # body iterate
+    for body, block in zip(sent, calls[0]['bodies']):
+        assert block.startswith('<message ')
+        assert body in block
 
     # message file
     outbox = f"{root}/alice@example.com/mail/outbox"
@@ -633,14 +773,6 @@ def test_process_skips_message_without_eml(tmp_path, monkeypatch):
     # report count
     assert len(os.listdir(f"{root}/alice@example.com/mail/outbox")) == 1
 
-    # root
-    root = f"{tmp_path}/emails"
-
-    # prompt make
-    os.makedirs(f"{root}/alice@example.com/prompt/daily", exist_ok = True)
-    with open(f"{root}/alice@example.com/prompt/daily/prompt.md", 'w') as fp:
-        fp.write('summarise the new mail.')
-
     # process
     result = process(root, 'alice@example.com', 'daily')
 
@@ -654,14 +786,14 @@ def test_process_missing_prompt_raises(tmp_path):
     root = f"{tmp_path}/emails"
 
     # user make
-    user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
+    user_make(root, 'alice@example.com')
 
     # message make
     message_make(root, 'alice@example.com')
 
     # raises
     with pytest.raises(Exception, match = 'prompt missing'):
-        process(root, 'alice@example.com', 'weekly')
+        process(root, 'alice@example.com', 'daily')
 
 
 def test_process_preserve_inbox_leaves_mail(tmp_path, monkeypatch):

@@ -1,6 +1,7 @@
 #
 #   src/worker/task.py
 #
+from html import escape
 from shared import mail, util, uuid7
 import datetime
 import json
@@ -35,55 +36,12 @@ def interval(schedule):
 
 
 #
-#   list
-#
-def list_schedules(root, user):
-
-    # path
-    path = f"{root}/{user}/prompt"
-
-    # item[s]
-    items = []
-
-    # path check
-    if not os.path.isdir(path):
-        return []
-
-    # list
-    for name in sorted(os.listdir(path)):
-
-        # dir check
-        if os.path.isdir(f"{path}/{name}"):
-            items.append(name)
-
-    # return
-    return items
-
-
-#
 #   get[s]
 #
-def get_prompt(root, user, schedule):
+def get_text(root, user, folder):
 
     # path
-    path = f"{root}/{user}/prompt/{schedule}/prompt.md"
-
-    # path check
-    if not os.path.isfile(path):
-        raise Exception(f"prompt missing '{path}'")
-
-    # file read
-    with open(path) as fp:
-        text = fp.read()
-
-    # return
-    return text
-
-
-def get_context(root, user):
-
-    # path
-    path = f"{root}/{user}/context"
+    path = f"{root}/{user}/{folder}"
 
     # text
     text = ''
@@ -104,32 +62,88 @@ def get_context(root, user):
             # file path
             file_path = os.path.join(dirpath, file)
 
+            # name
+            name = escape(os.path.relpath(file_path, f"{root}/{user}"), quote = True)
+
             # file read
             with open(file_path) as fp:
-                text += fp.read() + "\n"
+                text += f"<file path=\"{name}\">\n{fp.read()}\n</file>\n"
 
     # return
     return text
 
 
-def get_properties(root, user):
+def get_prompt(root, user):
+
+    # text
+    text = get_text(root, user, 'prompt')
+
+    # text check
+    if not text:
+        raise Exception(f"prompt missing '{root}/{user}/prompt'")
+
+    # return
+    return text
+
+
+def get_context(root, user):
+
+    # return
+    return get_text(root, user, 'context')
+
+
+def get_message(path):
+
+    # message read
+    with open(f"{path}/message.eml", 'rb') as fp:
+        raw = fp.read()
+
+    # message parse
+    message = mail.parse(raw)
+
+    # attachment[s]
+    names = []
+
+    # attachment check
+    if os.path.isdir(f"{path}/attachments"):
+        names = sorted(os.listdir(f"{path}/attachments"))
+
+    # attribute[s]
+    attributes = {
+        'id'          : os.path.basename(path),
+        'from'        : str(message.get('from') or ''),
+        'to'          : str(message.get('to') or ''),
+        'date'        : str(message.get('date') or ''),
+        'subject'     : str(message.get('subject') or ''),
+        'attachments' : ', '.join(names)
+    }
+
+    # tag
+    tag = 'message'
+
+    # attribute iterate
+    for key in attributes:
+        tag += f" {key}=\"{escape(attributes[key], quote = True)}\""
+
+    # return
+    return f"<{tag}>\n{mail.body(message)}\n</message>\n"
+
+
+def get_properties(root, user, section):
 
     # path
     path = f"{root}/{user}/properties.json"
 
     # path check
     if not os.path.isfile(path):
-        return {}
+        return None
 
     # file read
     with open(path) as fp:
         data = json.load(fp)
 
-    # mail section
-    section = data.get('mail') or {}
-
     # return
-    return section
+    return data.get(section)
 
 
 def get_key():
@@ -143,6 +157,18 @@ def get_key():
 
     # return
     return key
+
+
+#
+#   list
+#
+def list_schedules(root, user):
+
+    # schedule[s]
+    schedules = get_properties(root, user, 'schedules') or []
+
+    # return
+    return schedules
 
 
 #
@@ -164,7 +190,7 @@ def model(messages):
     completion = client.chat.completions.create(
         model      = util.env('MILTON_WORKER_MODEL', 'openrouter/free'),
         messages   = messages,
-        max_tokens = 2000
+        max_tokens = util.env_int('MILTON_WORKER_MAX_TOKENS', 2000)
     )
 
     # choice[s]
@@ -214,24 +240,37 @@ def html_extract(text):
     # return
     return text
 
-def generate(prompt, context, bodies):
+def generate(prompt, context, messages):
 
     # system
-    system = 'reply with a single html fragment, no markdown and no code fences'
+    system = '\n'.join([
+        'you write an html email report.',
+        '<prompt> holds your instructions; any html file in it is the template to fill.',
+        '<context> holds read-only reference files about the recipient; use them, never quote them wholesale.',
+        '<mail> holds the new messages to report on, one <message> each.',
+        'reply with a single html fragment, no markdown and no code fences.'
+    ])
 
-    # body[s]
-    joined = '\n\n---\n\n'.join(bodies)
+    # mail
+    documents = f"<mail count=\"{len(messages)}\">\n{''.join(messages)}</mail>\n"
+
+    # context
+    if context:
+        documents += f"\n<context>\n{context}</context>\n"
 
     # limit
-    limit = 12000
+    limit = util.env_int('MILTON_WORKER_INPUT_LIMIT', 12000)
+
+    # document[s]
+    documents = text_cut(documents, limit)
 
     # content
-    content = f"{prompt}\n\n# context\n\n{context}\n\n# mail\n\n{joined}"
+    content = f"{documents}\n<prompt>\n{prompt}</prompt>\n"
 
     # message[s]
     messages = [
         {"role": "system", "content": system},
-        {"role": "user", "content": text_cut(content, limit)}
+        {"role": "user", "content": content}
     ]
 
     # html
@@ -258,13 +297,13 @@ def process(root, user, schedule, preserve_inbox = False):
         return None
 
     # prompt read
-    prompt_text = get_prompt(root, user, schedule)
+    prompt_text = get_prompt(root, user)
 
     # context read
     context_text = get_context(root, user)
 
     # properties read
-    section = get_properties(root, user)
+    section = get_properties(root, user, 'mail') or {}
 
     # mail path[s]
     paths = []
@@ -294,24 +333,15 @@ def process(root, user, schedule, preserve_inbox = False):
     if not paths:
         return None
 
-    # body[s]
-    bodies = []
+    # message[s]
+    messages = []
 
     # path iterate
     for path in paths:
-
-        # message read
-        with open(f"{path}/message.eml", 'rb') as fp:
-            raw = fp.read()
-
-        # message parse
-        message = mail.parse(raw)
-
-        # body
-        bodies.append(mail.body(message))
+        messages.append(get_message(path))
 
     # html generate
-    html = generate(prompt_text, context_text, bodies)
+    html = generate(prompt_text, context_text, messages)
 
     # id
     id = uuid7.new()
@@ -362,7 +392,7 @@ def process(root, user, schedule, preserve_inbox = False):
             os.rename(path, f"{archive}/{os.path.basename(path)}")
 
     # log
-    logging.info(f"[{user}] [{schedule}] reported[{len(bodies)}]")
+    logging.info(f"[{user}] [{schedule}] reported[{len(messages)}]")
 
     # return
     return None
