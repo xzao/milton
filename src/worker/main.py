@@ -2,12 +2,13 @@
 #   src/worker/main.py
 #
 from shared import util
-from task import interval, list_schedules, process
+from task import interval, list_schedules, process, timing
 import functools
 import logging
 import os
 import scheduler
 import time
+import zoneinfo
 
 
 #
@@ -16,6 +17,7 @@ import time
 EMAILS = '/etc/milton/emails'
 RELOAD = util.env_int('MILTON_WORKER_RELOAD', 300)
 TICK   = util.env_int('MILTON_WORKER_INTERVAL', 1)
+ZONE   = zoneinfo.ZoneInfo(util.env('MILTON_WORKER_TIMEZONE', 'UTC'))
 
 
 #
@@ -29,7 +31,7 @@ logging.basicConfig(
 #
 #   register
 #
-jobs       = scheduler.Scheduler()
+jobs       = scheduler.Scheduler(tzinfo = ZONE)
 registered = {}
 
 def register():
@@ -78,11 +80,24 @@ def register():
         # user, name
         user, name = found[key]
 
+        # handle
+        handle = functools.partial(process, EMAILS, user, name)
+
+        # timing guard
+        try:
+            triggers = timing(name, ZONE)
+        except Exception as error:
+            logging.warning(f"[{key}] refused[{error}]")
+            continue
+
         # job add
-        registered[key] = jobs.cyclic(interval(name), functools.partial(process, EMAILS, user, name))
+        if triggers == None:
+            registered[key] = jobs.cyclic(interval(name), handle)
+        else:
+            registered[key] = jobs.weekly(triggers, handle)
 
         # log
-        logging.info(f"[{key}] registered")
+        logging.info(f"[{key}] registered[{registered[key].datetime}]")
 
     # return
     return None

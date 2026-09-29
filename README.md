@@ -38,8 +38,20 @@ the properties of every message the worker writes to
 to the address, `subject` to the schedule name, and `cc` / `bcc` are lists
 applied as message headers. the body is sent as `text/html`.
 
-its `schedules` section is the list of schedules to run — each entry an
-interval token, so a schedule exists when it is listed:
+its `schedules` section is the list of schedules to run, so a schedule exists
+when it is listed. each entry is either an interval token — `5m`, `30m`, `1h`,
+`daily`, `weekly`, counted from when the worker registers it — or a day and one
+or more `HH:MM` times:
+
+- `daily 08:00` — every day at 08:00;
+- `weekdays 08:30 17:00` — monday to friday, twice a day;
+- `weekends 10:00`;
+- `mon,wed,fri 09:00` — any comma list of `mon` … `sun`, `daily`, `weekdays`,
+  `weekends`.
+
+timed schedules run in `MILTON_WORKER_TIMEZONE` (an iana name such as
+`Australia/Melbourne`; `UTC` by default), daylight saving included. an entry
+with an unknown day or time is logged and skipped.
 
 ```json
 {

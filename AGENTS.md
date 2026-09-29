@@ -503,7 +503,11 @@ listed.
 
 A `<email>` is valid when its `mail/` folder exists. `util.emails(EMAILS)` lists
 them; `util.valid(EMAILS, address)` checks one. The `schedules` entries are
-interval tokens: `5m`, `30m`, `1h`, `daily`, `weekly`. All schedules share one
+interval tokens (`5m`, `30m`, `1h`, `daily`, `weekly`, via `task.interval` and
+`jobs.cyclic`) or a day list and `HH:MM` times (`daily 08:00`,
+`weekdays 08:30 17:00`, `mon,fri 09:00`, via `task.timing` and `jobs.weekly`),
+the times in `MILTON_WORKER_TIMEZONE` (`UTC` by default); `register` logs and
+skips an entry `timing` refuses. All schedules share one
 prompt: `prompt/` is read like `context/` — every file under it, sorted, each
 wrapped in a `<file path="prompt/…">` block, is the prompt.
 
@@ -520,6 +524,7 @@ MILTON_WORKER_MODEL
 MILTON_WORKER_INPUT_LIMIT
 MILTON_WORKER_MAX_TOKENS
 MILTON_WORKER_RELOAD
+MILTON_WORKER_TIMEZONE
 MILTON_DISPATCHER_INTERVAL
 MILTON_DISPATCHER_SES_FROM
 MILTON_DISPATCHER_SES_REGION
