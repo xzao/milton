@@ -17,7 +17,7 @@ import zoneinfo
 EMAILS = '/etc/milton/emails'
 RELOAD = util.env_int('MILTON_WORKER_RELOAD', 300)
 TICK   = util.env_int('MILTON_WORKER_INTERVAL', 1)
-ZONE   = zoneinfo.ZoneInfo(util.env('MILTON_WORKER_TIMEZONE', 'UTC'))
+ZONE   = zoneinfo.ZoneInfo(util.env('TZ', 'UTC'))
 
 
 #

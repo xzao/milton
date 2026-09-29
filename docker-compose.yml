@@ -11,6 +11,8 @@ services:
       - "${MILTON_RECEIVER_SMTP_PORT:-2525}:${MILTON_RECEIVER_SMTP_PORT:-2525}"
     env_file:
       - .env
+    environment:
+      TZ: ${MILTON_TIMEZONE:-UTC}
     restart: unless-stopped
     volumes:
       - ./mnt/etc/milton:/etc/milton
@@ -24,6 +26,8 @@ services:
     user: "${MILTON_UID:-1000}:${MILTON_GID:-1000}"
     env_file:
       - .env
+    environment:
+      TZ: ${MILTON_TIMEZONE:-UTC}
     restart: unless-stopped
     volumes:
       - ./mnt/etc/milton:/etc/milton
@@ -37,6 +41,8 @@ services:
     user: "${MILTON_UID:-1000}:${MILTON_GID:-1000}"
     env_file:
       - .env
+    environment:
+      TZ: ${MILTON_TIMEZONE:-UTC}
     restart: unless-stopped
     volumes:
       - ./mnt/etc/milton:/etc/milton

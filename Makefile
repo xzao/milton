@@ -11,6 +11,7 @@
 $(shell test -f .env || cp .env.sample .env)
 include .env
 export $(shell sed 's/=.*//' .env)
+export TZ := $(or $(MILTON_TIMEZONE),UTC)
 
 
 #

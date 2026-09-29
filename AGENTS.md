@@ -517,7 +517,7 @@ them; `util.valid(EMAILS, address)` checks one. The `schedules` entries are
 interval tokens (`5m`, `30m`, `1h`, `daily`, `weekly`, via `task.interval` and
 `jobs.cyclic`) or a day list and `HH:MM` times (`daily 08:00`,
 `weekdays 08:30 17:00`, `mon,fri 09:00`, via `task.timing` and `jobs.weekly`),
-the times in `MILTON_WORKER_TIMEZONE` (`UTC` by default); `register` logs and
+the times in the `TZ` zone (`UTC` by default); `register` logs and
 skips an entry `timing` refuses. All schedules share one
 prompt: `prompt/` is read like `context/` — every file under it, sorted, each
 wrapped in a `<file path="prompt/…">` block, is the prompt.
@@ -527,6 +527,7 @@ Environment variables carry a **project prefix**:
 ```
 MILTON_UID
 MILTON_GID
+MILTON_TIMEZONE
 MILTON_RECEIVER_SMTP_PORT
 MILTON_WORKER_INTERVAL
 MILTON_WORKER_API_KEY
@@ -535,12 +536,15 @@ MILTON_WORKER_MODEL
 MILTON_WORKER_INPUT_LIMIT
 MILTON_WORKER_MAX_TOKENS
 MILTON_WORKER_RELOAD
-MILTON_WORKER_TIMEZONE
 MILTON_DISPATCHER_INTERVAL
 MILTON_DISPATCHER_SES_FROM
 MILTON_DISPATCHER_SES_REGION
 MILTON_CLI_WORKER_ADDRESS
 ```
+
+`MILTON_TIMEZONE` is read by no service: `docker-compose.yml` and the Makefile
+pass it on as the standard `TZ` (`UTC` by default), which sets log timestamps
+and the worker's schedule zone.
 
 `MILTON_CLI_*` variables feed developer commands only (`make process` passes
 `MILTON_CLI_WORKER_ADDRESS` to `bin/milton worker process`); no service reads
@@ -590,6 +594,7 @@ SERVICE` to select the service, and the spaced array form
 `args: SERVICE: <name>` and running as
 `user: ${MILTON_UID:-1000}:${MILTON_GID:-1000}` so the files it writes through
 the bind mount stay owned by the host user, with `env_file: .env`,
+`environment: TZ: ${MILTON_TIMEZONE:-UTC}`,
 `restart: unless-stopped` and the bind mount `./mnt/etc/milton:/etc/milton`.
 `.dockerignore` keeps `mnt` (and `.git`, `.env*`, `__pycache__`) out of the
 build context.

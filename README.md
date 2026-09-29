@@ -49,8 +49,10 @@ or more `HH:MM` times:
 - `mon,wed,fri 09:00` — any comma list of `mon` … `sun`, `daily`, `weekdays`,
   `weekends`.
 
-timed schedules run in `MILTON_WORKER_TIMEZONE` (an iana name such as
-`Australia/Melbourne`; `UTC` by default), daylight saving included. an entry
+timed schedules run in `MILTON_TIMEZONE` (an iana name such as
+`Australia/Melbourne`; `UTC` by default), daylight saving included. docker
+compose (and the Makefile, for `make develop` / `make process`) passes it to
+every service as `TZ`, so log timestamps use it too. an entry
 with an unknown day or time is logged and skipped.
 
 ```json
