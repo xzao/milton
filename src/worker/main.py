@@ -23,9 +23,7 @@ ZONE   = zoneinfo.ZoneInfo(util.env('MILTON_WORKER_TIMEZONE', 'UTC'))
 #
 #   logging
 #
-logging.basicConfig(
-    level = logging.INFO
-)
+util.log_setup()
 
 
 #

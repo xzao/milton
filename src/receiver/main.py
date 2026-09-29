@@ -18,9 +18,7 @@ PORT   = util.env_int('MILTON_RECEIVER_SMTP_PORT', 2525)
 #
 #   logging
 #
-logging.basicConfig(
-    level = logging.INFO
-)
+util.log_setup()
 
 
 #

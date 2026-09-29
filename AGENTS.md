@@ -35,7 +35,7 @@ milton/
 │   │   └── requirements.txt boto3
 │   └── shared/
 │       ├── __init__.py      re-exports util, mail, uuid7
-│       ├── util.py          env helpers + address inference
+│       ├── util.py          env helpers + address inference + log setup
 │       ├── mail.py          email parse / body / attachments
 │       └── uuid7.py         uuidv7 generator
 ├── bin/
@@ -142,7 +142,7 @@ Sections split a file into named blocks. Every section is:
   | `src/worker/task.py` | `interval` → `get[s]` → `list` → `model` → `generate` → `process` |
   | `src/dispatcher/main.py` | `var[s]` → `logging` → `dir[s]` → `send` → `loop` |
   | `src/dispatcher/message.py` | `address` → `destination` → `content` |
-  | `src/shared/util.py` | `env[s]` → `email[s]` |
+  | `src/shared/util.py` | `env[s]` → `email[s]` → `log` |
   | `src/shared/mail.py` | `parse` → `body` → `attachment[s]` |
   | `src/shared/uuid7.py` | `new` |
   | `Dockerfile` | `working` → `service` → `requirement[s]` → `src` → `command` |
@@ -398,13 +398,24 @@ if not os.path.isdir(path):
 #   logging
 #
 
-- Configured once, in each `main.py` (and `bin/milton`), as its own section:
+- Configured once, in each `main.py` (and `bin/milton`), as its own section,
+  through the shared `util.log_setup()` so every component prints one format:
 
 ```python
-logging.basicConfig(
-    level = logging.INFO
-)
+#
+#   logging
+#
+util.log_setup()
 ```
+
+```
+2026-09-29 12:04:15  INFO  main.py:18 ➔ [user] registered
+2026-09-29 12:04:16  WARN  main.py:24 ➔ [user] refused[...]
+2026-09-29 12:04:18  ERROR task.py:30 ➔ [user] failed[...]
+```
+
+- Change the format only in `util.log_setup` (`WARNING` prints as `WARN`,
+  `CRITICAL` as `CRIT`); never add a `basicConfig` elsewhere.
 
 - Use the `logging` module only — no `print`.
 - Log lines are f-strings with **bracketed context** and a lowercase verb:
@@ -667,9 +678,7 @@ EMAILS = '/etc/milton/emails'
 #
 #   logging
 #
-logging.basicConfig(
-    level = logging.INFO
-)
+util.log_setup()
 
 
 #

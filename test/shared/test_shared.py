@@ -3,6 +3,7 @@
 #
 from email.message import EmailMessage
 from shared import mail, util
+import logging
 
 
 #
@@ -46,3 +47,22 @@ def test_body_empty_without_text():
 
     # assert
     assert mail.body(mail.parse(message.as_bytes())) == ''
+
+
+def test_log_setup_format(monkeypatch):
+
+    # handler[s]
+    monkeypatch.setattr(logging.root, 'handlers', [])
+
+    # setup
+    util.log_setup()
+
+    # record
+    record = logging.LogRecord('milton', logging.WARNING, '/app/main.py', 24, 'retrying', None, None)
+    record.created = 0
+
+    # line
+    line = logging.root.handlers[0].format(record)
+
+    # assert
+    assert line.endswith('  WARN  main.py:24 ➔ retrying')

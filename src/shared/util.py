@@ -1,6 +1,7 @@
 #
 #   src/shared/util.py
 #
+import logging
 import os
 
 
@@ -62,3 +63,23 @@ def valid(root, address):
 
     # mail check
     return os.path.isdir(f"{root}/{address}/mail")
+
+
+#
+#   log
+#
+def log_setup(level = logging.INFO):
+
+    # level name[s]
+    logging.addLevelName(logging.WARNING, 'WARN')
+    logging.addLevelName(logging.CRITICAL, 'CRIT')
+
+    # config
+    logging.basicConfig(
+        level   = level,
+        format  = '%(asctime)s  %(levelname)-5s %(filename)s:%(lineno)d ➔ %(message)s',
+        datefmt = '%Y-%m-%d %H:%M:%S'
+    )
+
+    # return
+    return None

@@ -36,9 +36,7 @@ LABEL  = 'preview'
 #
 #   logging
 #
-logging.basicConfig(
-    level = logging.INFO
-)
+util.log_setup()
 
 
 #

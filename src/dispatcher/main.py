@@ -22,9 +22,7 @@ SES_REGION = util.env('MILTON_DISPATCHER_SES_REGION')
 #
 #   logging
 #
-logging.basicConfig(
-    level = logging.INFO
-)
+util.log_setup()
 
 
 #
