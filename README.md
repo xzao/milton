@@ -31,11 +31,11 @@ mounted by compose):
 an `<email>` is valid when its `mail/` folder exists.
 
 `properties.json` at the address root holds the loose per-address settings, one
-section per concern. its `mail` section (`to`, `subject`, `cc`, `bcc`) becomes
+section per concern. its `mail` section (`from`, `to`, `subject`, `cc`, `bcc`) becomes
 the properties of every message the worker writes to
 `mail/outbox/<id>/properties.json`, next to the generated html body in
-`mail/outbox/<id>/message.html`, which the dispatcher reads back: `to` defaults
-to the address, `subject` to the schedule name, and `cc` / `bcc` are lists
+`mail/outbox/<id>/message.html`, which the dispatcher reads back: `from` and `to`
+default to the address, `subject` to the schedule name, and `cc` / `bcc` are lists
 applied as message headers. the body is sent as `text/html`.
 
 its `schedules` section is the list of schedules to run, so a schedule exists
@@ -58,6 +58,7 @@ with an unknown day or time is logged and skipped.
 ```json
 {
     "mail": {
+        "from": "reports@example.com",
         "to": "you@example.com",
         "subject": "",
         "cc": [],
@@ -126,7 +127,7 @@ and leaves the rest in the inbox for the next run (the template and the prompt
 are never cut), and the reply is capped at `MILTON_WORKER_MAX_TOKENS` tokens (`2000` by default), so raise both
 when the prompt, the context and the html template are large.
 
-the dispatcher sends reports with amazon ses. `MILTON_DISPATCHER_SES_FROM` must
-be a verified identity in ses, and the region comes from
+the dispatcher sends reports with amazon ses. each address's `mail` `from` (the
+address itself when unset) must be a verified identity in ses, and the region comes from
 `MILTON_DISPATCHER_SES_REGION` or `AWS_DEFAULT_REGION`; reports are left in the
 outbox unless `AWS_SECRET_ACCESS_KEY` is set.

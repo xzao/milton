@@ -15,7 +15,6 @@ import time
 #
 EMAILS     = '/etc/milton/emails'
 INTERVAL   = util.env_int('MILTON_DISPATCHER_INTERVAL', 60)
-SES_FROM   = util.env('MILTON_DISPATCHER_SES_FROM', 'milton@localhost')
 SES_REGION = util.env('MILTON_DISPATCHER_SES_REGION')
 
 
@@ -52,6 +51,13 @@ def send(folder, user):
     with open(f"{folder}/properties.json") as fp:
         data = json.load(fp)
 
+    # sender
+    sender = data.get('from') or user
+
+    # sender valid check
+    if '@' not in sender:
+        raise Exception(f"invalid sender '{sender}'")
+
     # to
     to = data.get('to')
 
@@ -81,7 +87,7 @@ def send(folder, user):
 
     # ses send
     response = client.send_email(
-        FromEmailAddress = SES_FROM,
+        FromEmailAddress = sender,
         Destination      = destination(to, cc, bcc),
         Content          = content(subject, html)
     )
@@ -97,7 +103,7 @@ def send(folder, user):
     os.rename(folder, f"{sent}/{id}")
 
     # log
-    logging.info(f"[{id}] sent[{to}] message[{message_id}]")
+    logging.info(f"[{id}] sent[{to}] from[{sender}] message[{message_id}]")
 
     # return
     return True

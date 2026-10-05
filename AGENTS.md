@@ -239,7 +239,6 @@ blocks**; a lone statement keeps a single space.
 ```python
 EMAILS     = '/etc/milton/emails'
 INTERVAL   = util.env_int('MILTON_DISPATCHER_INTERVAL', 60)
-SES_FROM   = util.env('MILTON_DISPATCHER_SES_FROM', 'milton@localhost')
 SES_REGION = util.env('MILTON_DISPATCHER_SES_REGION')
 ```
 
@@ -346,7 +345,7 @@ import time
 - Modules are a single lowercase word: `util`, `mail`, `uuid7`, `receiver`,
   `worker`, `dispatcher`.
 - Module-level constants are `SCREAMING_SNAKE_CASE`: `EMAILS`, `PORT`, `TICK`,
-  `SES_FROM`.
+  `SES_REGION`.
 - Function prefixes carry meaning and should be reused:
   - `get_*` — fetch one value (`get_text`, `get_prompt`, `get_context`,
     `get_properties(root, user, section)`, `get_key`).
@@ -469,7 +468,7 @@ Three services share one data tree under `/etc/milton`. Each is one directory un
   chat-completions model (`task.model`, openai client against openrouter by
   default, reply capped at `MILTON_WORKER_MAX_TOKENS`) for the html body —
   writes a single `mail/outbox/<uuid7>/message.html` + `properties.json`
-  (to/subject/cc/bcc from the address `properties.json` `mail` section), and
+  (from/to/subject/cc/bcc from the address `properties.json` `mail` section), and
   archives the batch. `task.process(root, user, schedule, preserve_inbox =
   True)` leaves the batch in `mail/inbox` — what `bin/milton worker process
   [address] --preserve-inbox` (and `make process`) uses to preview a report
@@ -506,9 +505,9 @@ by compose:
 ```
 
 `properties.json` at the address root holds the address settings, one section
-per concern. Its `mail` section (`to`, `subject`, `cc`, `bcc`) is copied into
+per concern. Its `mail` section (`from`, `to`, `subject`, `cc`, `bcc`) is copied into
 every `mail/outbox/<uuid7>/properties.json` the worker writes and applied by the
-dispatcher; `to` defaults to the address, `subject` to the schedule. Its
+dispatcher; `from` and `to` default to the address, `subject` to the schedule. Its
 `schedules` section lists the schedules to run — a schedule exists when it is
 listed.
 
@@ -537,7 +536,6 @@ MILTON_WORKER_INPUT_LIMIT
 MILTON_WORKER_MAX_TOKENS
 MILTON_WORKER_RELOAD
 MILTON_DISPATCHER_INTERVAL
-MILTON_DISPATCHER_SES_FROM
 MILTON_DISPATCHER_SES_REGION
 MILTON_CLI_WORKER_ADDRESS
 ```

@@ -502,8 +502,12 @@ def process(root, user, schedule, preserve_inbox = False):
     # bcc
     bcc = section.get('bcc') or []
 
+    # sender
+    sender = section.get('from') or user
+
     # message properties
     data = {
+        "from": sender,
         "to": to,
         "subject": subject,
         "cc": cc,

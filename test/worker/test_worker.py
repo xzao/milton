@@ -677,7 +677,7 @@ def test_process_writes_report_and_archives_inbox(tmp_path, monkeypatch):
         data = json.load(fp)
 
     # assert
-    assert data == {'to': 'alice@example.com', 'subject': 'daily', 'cc': [], 'bcc': []}
+    assert data == {'from': 'alice@example.com', 'to': 'alice@example.com', 'subject': 'daily', 'cc': [], 'bcc': []}
 
     # report json gone
     assert not os.path.isfile(f"{outbox}/{report_id}/report.json")
@@ -700,6 +700,7 @@ def test_process_writes_properties_from_mail_section(tmp_path, monkeypatch):
     # properties
     properties = {
         'mail' : {
+            'from'    : 'reports@example.com',
             'to'      : 'team@example.com',
             'subject' : 'daily digest',
             'cc'      : ['carol@example.com'],
@@ -734,6 +735,7 @@ def test_process_writes_properties_from_mail_section(tmp_path, monkeypatch):
 
     # assert
     assert data == {
+        'from'    : 'reports@example.com',
         'to'      : 'team@example.com',
         'subject' : 'daily digest',
         'cc'      : ['carol@example.com'],
