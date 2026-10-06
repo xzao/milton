@@ -584,7 +584,7 @@ Targets are one lowercase word and alphabetical inside `#\ttarget[s]`:
   commits and tags `v<x.y.z>` on a clean tree.
 
 The Dockerfile keeps `#   working` → `#   service` → `#   requirement[s]` →
-`#   src` → `#   command`, FROM `python:3.10`, `WORKDIR /app`, a build `ARG
+`#   src` → `#   command`, FROM `python:3.14-trixie` (matching the devcontainer), `WORKDIR /app`, a build `ARG
 SERVICE` to select the service, and the spaced array form
 `CMD [ "python", "./main.py" ]`.
 

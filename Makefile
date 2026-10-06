@@ -25,6 +25,10 @@ develop:
 	done; \
 	wait
 
+flush:
+	echo "TODO: FLLUSH OUTBOX"
+
+# TODO: Fix issue where its symlinking into itself...
 install:
 	mkdir -p $(CURDIR)/mnt/etc/milton
 	sudo ln -sf $(CURDIR)/mnt/etc/milton /etc/milton
@@ -36,7 +40,7 @@ install:
 logs:
 	docker compose logs -f
 
-process:
+preview:
 	@python bin/milton worker process "${MILTON_CLI_WORKER_ADDRESS}" --preserve-inbox
 
 restart:
