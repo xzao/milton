@@ -2,7 +2,7 @@
 #	Makefile
 #
 .DEFAULT_GOAL := logs
-.PHONY: develop install logs restart seed shell start stop test
+.PHONY: develop flush install logs restart seed shell start stop test
 
 
 #
@@ -26,7 +26,26 @@ develop:
 	wait
 
 flush:
-	echo "TODO: FLLUSH OUTBOX"
+	@addresses="$(filter-out $@,$(MAKECMDGOALS))"; \
+	[ -n "$$addresses" ] || addresses="$$(ls mnt/etc/milton/emails 2>/dev/null)"; \
+	outboxes=""; \
+	for address in $$addresses; do \
+		outboxes="$$outboxes mnt/etc/milton/emails/$$address/mail/outbox"; \
+	done; \
+	reports="$$(find $$outboxes -mindepth 1 -maxdepth 1 2>/dev/null)"; \
+	if [ -z "$$reports" ]; then \
+		echo "outbox empty"; \
+		exit 0; \
+	fi; \
+	echo "$$reports"; \
+	printf "flush $$(echo "$$reports" | wc -l) report(s)? [y/N] "; \
+	read answer; \
+	if [ "$$answer" != "y" ]; then \
+		echo "flush cancelled"; \
+		exit 0; \
+	fi; \
+	echo "$$reports" | xargs rm -rf; \
+	echo "outbox flushed"
 
 # TODO: Fix issue where its symlinking into itself...
 install:

@@ -568,13 +568,15 @@ recipe just runs something (`@python bin/milton ...`, `@clear`, `@git pull`).
 `.DEFAULT_GOAL` is `logs`; every target belongs in `.PHONY`.
 
 Targets are one lowercase word and alphabetical inside `#\ttarget[s]`:
-`develop`, `install`, `logs`, `process`, `restart`, `seed`, `shell`, `start`,
+`develop`, `flush`, `install`, `logs`, `process`, `restart`, `seed`, `shell`, `start`,
 `stop`, `test`, `upgrade`, `version`. A `%` catch-all in its own last section,
 `#\targ[s]`, swallows extra goal arguments so targets can read them from
 `$(MAKECMDGOALS)`:
 
 - `develop [service ...]` runs the listed services concurrently in dev
   (`receiver`, `worker`, `dispatcher` — all three by default);
+- `flush [address ...]` lists the reports in `mail/outbox` (every address by
+  default) and deletes them only after a `y` confirm;
 - `process` previews a report for `MILTON_CLI_WORKER_ADDRESS` (every address
   when empty) without consuming the inbox;
 - `seed ADDR=you@example.com` creates a new address folder with `mail/`,
