@@ -125,7 +125,10 @@ every key and value type kept, lists grown to fit — and the prompt last.
 the address `template.html` is a
 [jinja2](https://jinja.palletsprojects.com/) template rendered with that
 json: `{{ headline }}`, `{% for item in items %}…{% endfor %}`,
-`{% if … %}`. values are html-escaped, and a key the json lacks is an error.
+`{% if … %}`. values are html-escaped, and a key the json lacks is an error —
+guard an optional one with `{% if key is defined %}` or `{{ key | default('—') }}`.
+`x.key` always reads the json key, even one named like a dict method (`items`,
+`clear`, `keys`).
 the template is never sent to the model. when the reply is not json or the
 render fails, the error is logged and the report is still sent: the error, then
 the reply pretty-printed in a `<pre>` block, so nothing is lost. an address with

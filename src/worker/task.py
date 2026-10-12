@@ -346,22 +346,6 @@ def json_extract(text):
     # text
     text = text.strip()
 
-    # fence check
-    if '```' in text:
-
-        # part
-        part = text.split('```')[1].strip()
-
-        # line[s]
-        lines = part.splitlines()
-
-        # tag check
-        if len(lines) > 1 and '{' not in lines[0]:
-            part = part[len(lines[0]):].lstrip()
-
-        # text
-        text = part
-
     # start
     start = text.find('{')
 
@@ -435,7 +419,7 @@ def reply_pretty(reply):
     # json guard
     try:
         return json.dumps(json.loads(reply), indent = 4, ensure_ascii = False)
-    except Exception:
+    except Exception as error:
         return reply
 
 def fallback(reply, error = ''):
@@ -467,6 +451,9 @@ def render(template, reply):
         autoescape = True,
         undefined  = jinja2.StrictUndefined
     )
+
+    # key first
+    environment.getattr = environment.getitem
 
     # return
     return environment.from_string(template).render(data)

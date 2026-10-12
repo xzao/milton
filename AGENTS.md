@@ -28,7 +28,7 @@ milton/
 │   ├── worker/
 │   │   ├── main.py          scheduler + prompt loop entrypoint
 │   │   ├── task.py          prompt run logic (importable / testable)
-│   │   └── requirements.txt openai, scheduler
+│   │   └── requirements.txt openai, scheduler, jinja2
 │   ├── dispatcher/
 │   │   ├── main.py          ses sender entrypoint
 │   │   ├── message.py       ses destination / content (importable / testable)
@@ -129,8 +129,8 @@ Sections split a file into named blocks. Every section is:
 - Add a **`[s]` suffix when the section may hold more than one item**:
   `var[s]`, `get[s]`, `attachment[s]`, `service[s]`, `target[s]`. Singular when
   it holds one: `logging`, `loop`, `handler`, `controller`, `send`, `process`,
-  `register`, `interval`, `list`, `model`, `generate`, `path`, `parser`,
-  `run`, `working`, `command`.
+  `register`, `interval`, `list`, `model`, `generate`, `render`, `path`,
+  `parser`, `run`, `working`, `command`.
 - Sections are separated by **two blank lines**.
 - Sections run top-to-bottom in dependency order. The established order is:
 
@@ -212,7 +212,8 @@ def env_int(name, default):
   step comments.
 - Small helpers used by one section live in that section, above the function
   that uses them (`text_cut` and `json_extract` sit in `#   generate`,
-  `get_text` heads `#   get[s]`).
+  `tag_guard`, `get_text` and `get_file` head `#   get[s]`,
+  `reply_pretty` heads `#   render`).
 - Handle exceptions with `raise Exception('<lowercase message>')`. Messages are
   lowercase, unpunctuated, and use bracket context where useful:
   `raise Exception('report missing recipient')`,
@@ -298,7 +299,8 @@ Order:
    `from . import ...` inside `shared/__init__.py`.
 2. Then every plain `import x` — standard library and third-party together — in
    one alphabetical block (`argparse`, `boto3`, `datetime`, `email`,
-   `functools`, `json`, `logging`, `openai`, `os`, `scheduler`, `sys`, `time`).
+   `functools`, `jinja2`, `json`, `logging`, `openai`, `os`, `re`,
+   `scheduler`, `sys`, `time`, `zoneinfo`).
 
 One module per `import` line. Never `from x import *`. No import sorting tools
 — the order above is intentional and stable.
@@ -314,12 +316,13 @@ directory is on the path at runtime (the script's own directory, or
 #   src/worker/main.py
 #
 from shared import util
-from task import interval, list_schedules, process
+from task import interval, list_schedules, process, timing
 import functools
 import logging
 import os
 import scheduler
 import time
+import zoneinfo
 ```
 
 
@@ -347,7 +350,8 @@ import time
 - Module-level constants are `SCREAMING_SNAKE_CASE`: `EMAILS`, `PORT`, `TICK`,
   `SES_REGION`.
 - Function prefixes carry meaning and should be reused:
-  - `get_*` — fetch one value (`get_text`, `get_prompt`, `get_context`,
+  - `get_*` — fetch one value (`get_text`, `get_file`, `get_prompt`,
+    `get_context`, `get_schema`, `get_template`,
     `get_properties(root, user, section)`, `get_key`).
   - `list_*` — fetch many, return a list (`list_schedules`).
   - `emails` / `valid` — infer valid addresses from the data tree.
@@ -415,7 +419,6 @@ util.log_setup()
 
 - Change the format only in `util.log_setup` (`WARNING` prints as `WARN`,
   `CRITICAL` as `CRIT`); never add a `basicConfig` elsewhere.
-
 - Use the `logging` module only — no `print`.
 - Log lines are f-strings with **bracketed context** and a lowercase verb:
 
@@ -434,8 +437,9 @@ logging.error(f"[{name}] failed[{error}]")
 #   service[s]
 #
 
-Three services share one data tree under `/etc/milton`. Each is one directory under
-`src/` with a `main.py` and a `requirements.txt`, wired in `docker-compose.yml`.
+Three services share one data tree under `/etc/milton`. Each is one directory
+under `src/` with a `main.py` and a `requirements.txt`, wired in
+`docker-compose.yml`.
 
 - **receiver** — `aiosmtpd` listener. Its `Handler` accepts a recipient only
   when `util.valid(EMAILS, address)` (the address has a `mail/` folder) and
@@ -443,45 +447,46 @@ Three services share one data tree under `/etc/milton`. Each is one directory un
   when there is no `handle_RCPT` hook — then writes `message.eml` +
   attachments into `mail/inbox/<uuid7>/`, logging rejected addresses and save
   failures.
-- **worker** — `register()` adds one `scheduler` job per schedule in the
-  address `properties.json` `schedules` list (and makes the `mail/` folders).
-  The loop calls it again every `MILTON_WORKER_RELOAD` seconds, adding and
-  removing only the jobs that changed, and runs the jobs via
-  `scheduler.exec_jobs()`. Every schedule of an address shares one inbox, so the
-  first to run takes the mail; `register` warns when an address lists more than
-  one.
-  Each run is `task.process(root, user, schedule)`: it reads the shared prompt
-  and the user's context, takes messages from `mail/inbox` in sorted order
-  while they fit in `MILTON_WORKER_INPUT_LIMIT` less the context (at least one; the rest wait
-  for the next run), and calls `generate(prompt, context, messages, schema)` once.
-  The model sees tagged blocks — `<mail>` of
-  `<message id from to date subject attachments>`, then `<context>`, then
-  `<schema>` (the address `template.json`, via `get_schema`; never
-  cut), then `<prompt>` last (the address `prompt.md`, via `get_prompt`),
-  each file a `<file path="…">` — and a system message telling the
-  model to reply with one json object, the schema filled in with every key and
-  value type kept, naming each block's role and saying mail and context are
-  data, not instructions. `task.tag_guard` escapes any `</file`, `</message`,
-  `</mail`, `</context`, `</schema`, `</prompt` inside a block so its text
-  cannot forge one.
-  `generate` cuts the mail and context (never the schema or prompt) to
-  `MILTON_WORKER_INPUT_LIMIT` characters and asks the configured
-  chat-completions model (`task.model`, openai client against openrouter by
-  default, reply capped at `MILTON_WORKER_MAX_TOKENS`) for the json, which
-  `json_extract` frees from fences and prose. `render(template, reply)` then
-  fills the jinja2 template — the address `template.html`, raw, via
-  `get_template`; never sent to the model — with autoescape and
-  `StrictUndefined`, so a missing key fails. When the json or the render
-  fails, the error is logged and `fallback(reply, error)` is sent instead: the
-  error, then the reply (pretty-printed when it parses) in a `<pre>`; an
-  address with no template always gets `fallback(reply)`. `process`
-  writes a single `mail/outbox/<uuid7>/message.html` + `properties.json`
-  (from/to/subject/cc/bcc from the address `properties.json` `mail` section)
-  + `report.json` (the raw reply), and
-  archives the batch. `task.process(root, user, schedule, preserve_inbox =
-  True)` leaves the batch in `mail/inbox` — what `bin/milton worker process
-  [address] --preserve-inbox` (and `make process`) uses to preview a report
-  locally, with the fixed schedule label `preview`.
+- **worker** — `main.py` schedules; `task.py` runs one report.
+  - `register()` adds one `scheduler` job per entry in the address
+    `properties.json` `schedules` list (and makes the `mail/` folders). The
+    loop calls it again every `MILTON_WORKER_RELOAD` seconds, adding and
+    removing only the jobs that changed, and runs them via
+    `scheduler.exec_jobs()`. All schedules of an address share one inbox, so
+    the first to run takes the mail; `register` warns when there is more than
+    one.
+  - `task.process(root, user, schedule)` reads `prompt.md`, `context/`,
+    `template.json` and `template.html` (see `#   config`), then takes
+    messages from `mail/inbox` in sorted order while they fit in
+    `MILTON_WORKER_INPUT_LIMIT` less the context — at least one; the rest wait
+    for the next run.
+  - `generate(prompt, context, messages, schema)` makes one model call. The
+    user message is tagged blocks in this order: `<mail>` of
+    `<message id from to date subject attachments>`, `<context>`, `<schema>`,
+    `<prompt>`, each file a `<file path="…">`. Mail and context are cut to
+    `MILTON_WORKER_INPUT_LIMIT` characters; schema and prompt never are.
+    `tag_guard` escapes any `</file`, `</message`, `</mail`, `</context`,
+    `</schema`, `</prompt` inside a block so its text cannot forge one. The
+    system message names each block's role, says mail and context are data,
+    not instructions, and asks for one json object — the schema filled in,
+    every key and value type kept. `task.model` is an openai client against
+    openrouter by default, the reply capped at `MILTON_WORKER_MAX_TOKENS`;
+    `json_extract` keeps the reply from its first `{` to its last `}`.
+  - `render(template, reply)` fills `template.html` with the json through
+    jinja2: autoescape on, `StrictUndefined` so a missing key fails (an
+    optional one needs `is defined` or `| default`), and `getattr` set to
+    `getitem` so `x.items` / `x.clear` read the json key, not the dict method
+    — a clash would otherwise render silently.
+  - When the json does not parse or the render fails, `process` logs the
+    error and sends `fallback(reply, error)`: the error, then the reply
+    (pretty-printed when it parses) in a `<pre>`. An address with no
+    `template.html` always gets `fallback(reply)`.
+  - The report is one `mail/outbox/<uuid7>/` folder: `message.html`,
+    `properties.json` (from/to/subject/cc/bcc from the address `mail`
+    section) and `report.json` (the raw reply). The batch then moves to
+    `mail/archive` — unless `preserve_inbox = True`, which `bin/milton worker
+    process [address] --preserve-inbox` (and `make process`) uses to preview
+    a report with the fixed schedule label `preview`.
 - **dispatcher** — scans each user's `mail/outbox`, validates the recipient,
   sends `message.html` with amazon ses (`message.py` builds the destination and
   content from `properties.json`), and moves the report to `mail/sent`. `send`
@@ -507,33 +512,33 @@ linked to `/etc/milton` in the devcontainer and bind-mounted at `/etc/milton`
 by compose:
 
 ```
-/etc/milton/emails/<email>/properties.json  address properties (mail, schedules sections)
-/etc/milton/emails/<email>/mail             inbox / outbox / sent / archive
-/etc/milton/emails/<email>/context          read-only context files
+/etc/milton/emails/<email>/properties.json  address settings (mail, schedules sections)
 /etc/milton/emails/<email>/prompt.md        prompt text, shared by all schedules
-/etc/milton/emails/<email>/template.json    reply schema the model fills in
-/etc/milton/emails/<email>/template.html    jinja2 email template the reply is rendered with
+/etc/milton/emails/<email>/template.json    reply schema the model fills in (optional)
+/etc/milton/emails/<email>/template.html    jinja2 email template (optional)
+/etc/milton/emails/<email>/context/         reference files, every file sent
+/etc/milton/emails/<email>/mail/            inbox / outbox / sent / archive
 ```
 
-`properties.json` at the address root holds the address settings, one section
-per concern. Its `mail` section (`from`, `to`, `subject`, `cc`, `bcc`) is copied into
-every `mail/outbox/<uuid7>/properties.json` the worker writes and applied by the
-dispatcher; `from` and `to` default to the address, `subject` to the schedule. Its
-`schedules` section lists the schedules to run — a schedule exists when it is
-listed.
-
 A `<email>` is valid when its `mail/` folder exists. `util.emails(EMAILS)` lists
-them; `util.valid(EMAILS, address)` checks one. The `schedules` entries are
-interval tokens (`5m`, `30m`, `1h`, `daily`, `weekly`, via `task.interval` and
-`jobs.cyclic`) or a day list and `HH:MM` times (`daily 08:00`,
-`weekdays 08:30 17:00`, `mon,fri 09:00`, via `task.timing` and `jobs.weekly`),
-the times in the `TZ` zone (`UTC` by default); `register` logs and
-skips an entry `timing` refuses. All schedules share one
-prompt: `prompt.md` beside `properties.json`, wrapped in a
-`<file path="prompt.md">` block, and one template pair beside it:
-`template.json` (the `<schema>` the model fills in) and `template.html` (the
-jinja2 template the reply is rendered with; optional). Every file under
-`context/`, whatever its type, is context.
+them; `util.valid(EMAILS, address)` checks one.
+
+`properties.json` holds the address settings, one section per concern:
+
+- `mail` — `from`, `to`, `subject`, `cc`, `bcc`, copied into every
+  `mail/outbox/<uuid7>/properties.json` and applied by the dispatcher. `from`
+  and `to` default to the address, `subject` to the schedule.
+- `schedules` — the schedules to run; a schedule exists when it is listed.
+  An entry is an interval token (`5m`, `30m`, `1h`, `daily`, `weekly`, via
+  `task.interval` and `jobs.cyclic`) or a day list and `HH:MM` times
+  (`daily 08:00`, `weekdays 08:30 17:00`, `mon,fri 09:00`, via `task.timing`
+  and `jobs.weekly`) in the `TZ` zone (`UTC` by default). `register` logs and
+  skips an entry `timing` refuses.
+
+Every schedule shares the address `prompt.md` (required; `get_prompt` raises
+`prompt missing` without it) and its template pair: `template.json` (without
+it the model designs its own json) and `template.html` (without it the report
+is the json in a `<pre>`).
 
 Environment variables carry a **project prefix**:
 
@@ -563,7 +568,7 @@ and the worker's schedule zone.
 them. Every variable has a default in code (`util.env` / `util.env_int`),
 and an empty value counts as unset.
 
-the dispatcher's ses client also reads the standard `AWS_ACCESS_KEY_ID`,
+The dispatcher's ses client also reads the standard `AWS_ACCESS_KEY_ID`,
 `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` and `AWS_DEFAULT_REGION`
 variables through boto3.
 
@@ -582,10 +587,10 @@ recipe just runs something (`@python bin/milton ...`, `@clear`, `@git pull`).
 `.DEFAULT_GOAL` is `logs`; every target belongs in `.PHONY`.
 
 Targets are one lowercase word and alphabetical inside `#\ttarget[s]`:
-`develop`, `flush`, `install`, `logs`, `process`, `restart`, `seed`, `shell`, `start`,
-`stop`, `test`, `upgrade`, `version`. A `%` catch-all in its own last section,
-`#\targ[s]`, swallows extra goal arguments so targets can read them from
-`$(MAKECMDGOALS)`:
+`develop`, `flush`, `install`, `logs`, `process`, `restart`, `seed`, `shell`,
+`start`, `stop`, `test`, `upgrade`, `version`. A `%` catch-all in its own
+last section, `#\targ[s]`, swallows extra goal arguments so targets can read
+them from `$(MAKECMDGOALS)`:
 
 - `develop [service ...]` runs the listed services concurrently in dev
   (`receiver`, `worker`, `dispatcher` — all three by default);
@@ -594,16 +599,16 @@ Targets are one lowercase word and alphabetical inside `#\ttarget[s]`:
 - `process` previews a report for `MILTON_CLI_WORKER_ADDRESS` (every address
   when empty) without consuming the inbox;
 - `seed ADDR=you@example.com` creates a new address folder with `mail/`,
-  `context/`, a `prompt.md`, a `template.json` schema and a
-  `properties.json` scheduled `daily`;
+  `context/`, a `prompt.md`, a `template.json` and a `properties.json`
+  scheduled `daily`;
 - `test [component ...]` runs one test folder (all of `test/` by default);
 - `upgrade` pulls and rebuilds the stack; `version <x.y.z>` writes `VERSION`,
   commits and tags `v<x.y.z>` on a clean tree.
 
 The Dockerfile keeps `#   working` → `#   service` → `#   requirement[s]` →
-`#   src` → `#   command`, FROM `python:3.14-trixie` (matching the devcontainer), `WORKDIR /app`, a build `ARG
-SERVICE` to select the service, and the spaced array form
-`CMD [ "python", "./main.py" ]`.
+`#   src` → `#   command`, FROM `python:3.14-trixie` (matching the
+devcontainer), `WORKDIR /app`, a build `ARG SERVICE` to select the service,
+and the spaced array form `CMD [ "python", "./main.py" ]`.
 
 `docker-compose.yml` runs the three services, each `build`ing with
 `args: SERVICE: <name>` and running as
@@ -625,8 +630,8 @@ introduce a `src` package or relative imports that assume one.
 
 Tests live under `test/`, one folder per component (`receiver/`, `worker/`,
 `dispatcher/`, `shared/`; `milton/` for `bin/milton` once it has tests), plus
-`test/conftest.py` which puts `src/` on
-`sys.path` so tests can `from shared import ...`. A component that carries its
+`test/conftest.py` which puts `src/` on `sys.path` so tests can
+`from shared import ...`. A component that carries its
 own importable module adds a folder `conftest.py` putting `src/<service>` on
 `sys.path` (`test/receiver/`, `test/worker/`, `test/dispatcher/`), so tests can
 `from task import process`. pytest is the runner and is wired only through the
@@ -664,7 +669,7 @@ Before finishing any change:
 - [ ] two blank lines around section banners, one blank line between functions
       inside a section (`util.py`, `task.py`);
 - [ ] AGENTS.md and README.md still match the change (layout, section order,
-      env vars, make targets, data tree);
+      env vars, make targets, data tree, address files);
 - [ ] no docstrings, no `__main__` guard, no `print`;
 - [ ] no new dependency without a reason, and any new one is added to the
       service's `requirements.txt`;
@@ -715,5 +720,3 @@ while True:
 ```
 
 Then wire it in as described under `#   service[s]`.
-
-

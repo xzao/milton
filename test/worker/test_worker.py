@@ -605,6 +605,12 @@ def test_json_extract_prose():
     assert json_extract('sure: {"a": {"b": 2}} done') == '{"a": {"b": 2}}'
 
 
+def test_json_extract_fence_inside_value():
+
+    # assert
+    assert json_extract('{"detail": "run ```npm i``` now"}') == '{"detail": "run ```npm i``` now"}'
+
+
 def test_json_extract_no_object():
 
     # assert
@@ -1112,6 +1118,19 @@ def test_render_escapes_values():
 
     # assert
     assert render('<p>{{ title }}</p>', '{"title": "<b>hi</b>"}') == '<p>&lt;b&gt;hi&lt;/b&gt;</p>'
+
+
+def test_render_prefers_keys_over_dict_methods():
+
+    # assert
+    assert render('{{ x.items }} {{ x.clear }} {{ x.keys }}', '{"x": {"items": "a", "clear": "b", "keys": "c"}}') == 'a b c'
+
+
+def test_render_missing_nested_key_raises():
+
+    # raises
+    with pytest.raises(Exception, match = 'missing'):
+        render('<p>{{ x.missing }}</p>', '{"x": {"title": "hi"}}')
 
 
 def test_render_missing_key_raises():
