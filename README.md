@@ -8,7 +8,7 @@ and mails the resulting reports.
 #
 
 - `receiver` — smtp listener; writes accepted mail into the owner's `mail/inbox`.
-- `worker` — runs each schedule in the address `properties.json` `schedules`
+- `worker` — runs each schedule in the address `template.json` `schedules`
   list; each run asks the configured model to turn all mail in the inbox into
   json with the shared `prompt.md`, renders it into an html report, then archives it.
 - `dispatcher` — validates each finished report and sends it with amazon ses.
@@ -22,25 +22,24 @@ committed — gitignored and dockerignored, linked in the devcontainer and
 mounted by compose):
 
 ```
-/etc/milton/emails/<email>/properties.json  address properties (mail, schedules sections)
+/etc/milton/emails/<email>/template.json    address settings (mail headers, schedules, data)
 /etc/milton/emails/<email>/mail             mail spool (inbox/outbox/sent/archive)
 /etc/milton/emails/<email>/context          read-only context for the prompts
 /etc/milton/emails/<email>/prompt.md        prompt text (shared by all schedules)
-/etc/milton/emails/<email>/template.json    reply schema the model fills in
 /etc/milton/emails/<email>/template.html    jinja2 email template (optional)
 ```
 
 an `<email>` is valid when its `mail/` folder exists.
 
-`properties.json` at the address root holds the loose per-address settings, one
-section per concern. its `mail` section (`from`, `to`, `subject`, `cc`, `bcc`) becomes
-the properties of every message the worker writes to
-`mail/outbox/<id>/properties.json`, next to the generated html body in
+`template.json` at the address root holds the address settings. it has the
+same shape as the `message.json` of every report: `from`, `to`, `subject`,
+`cc`, `bcc` become the headers of every message the worker writes to
+`mail/outbox/<id>/message.json`, next to the generated html body in
 `mail/outbox/<id>/message.html`, which the dispatcher reads back: `from` and `to`
 default to the address, `subject` to the schedule name, and `cc` / `bcc` are lists
 applied as message headers. the body is sent as `text/html`.
 
-its `schedules` section is the list of schedules to run, so a schedule exists
+its `schedules` list is the schedules to run, so a schedule exists
 when it is listed. each entry is either an interval token — `5m`, `30m`, `1h`,
 `daily`, `weekly`, counted from when the worker registers it — or a day and one
 or more `HH:MM` times:
@@ -57,22 +56,28 @@ compose (and the Makefile, for `make develop` / `make process`) passes it to
 every service as `TZ`, so log timestamps use it too. an entry
 with an unknown day or time is logged and skipped.
 
+its `data` is the json skeleton the model fills in for each report (only
+`data` is sent to the model), and the `data` that `template.html` is rendered
+with.
+
 ```json
 {
-    "mail": {
-        "from": "reports@example.com",
-        "to": "you@example.com",
-        "subject": "",
-        "cc": [],
-        "bcc": []
-    },
-    "schedules": ["5m", "30m", "1h", "daily", "weekly"]
+    "from": "reports@example.com",
+    "to": "you@example.com",
+    "subject": "",
+    "cc": [],
+    "bcc": [],
+    "schedules": ["daily 08:00"],
+    "data": {
+        "headline": "",
+        "summary": "",
+        "items": [{ "title": "", "detail": "" }]
+    }
 }
 ```
 
-every schedule shares one prompt: `prompt.md` at the address root, next to
-`properties.json`, and one template pair beside it: `template.json` (the reply
-schema) and `template.html` (the email template).
+every schedule shares one prompt, `prompt.md`, and one email template,
+`template.html`, both at the address root next to `template.json`.
 
 every schedule also shares one inbox, so when an address lists several, the
 first to run reports on the mail and archives it — the others find it empty.
@@ -99,7 +104,7 @@ bin/milton worker process [address] [--preserve-inbox]   process on demand
 one) and `--preserve-inbox` leaves the batch in `mail/inbox` instead of moving
 it to `mail/archive`, so the report in `mail/outbox/<id>/message.html` can be
 previewed locally without consuming the mail. the run is labelled `preview`,
-which is also the report subject when the `mail` section has none. set
+which is also the report subject when `template.json` has none. set
 `MILTON_WORKER_API_KEY` first.
 
 #
@@ -118,8 +123,8 @@ default) for the report data as one json object, then renders the email html
 itself. set `MILTON_WORKER_API_KEY`, and optionally `MILTON_WORKER_API_URL` and
 `MILTON_WORKER_MODEL` (`openrouter/free` by default). the model gets each mail
 as a `<message>` block with its headers, each `context/` file as a
-`<file path="…">` block, the address `template.json` as the `<schema>` — the
-json skeleton it must fill in,
+`<file path="…">` block, the `data` of the address `template.json` as the
+`<schema>` — the json skeleton it must fill in,
 every key and value type kept, lists grown to fit — and the prompt last.
 
 the address `template.html` is a
@@ -132,8 +137,9 @@ guard an optional one with `{% if key is defined %}` or `{{ key | default('—')
 the template is never sent to the model. when the reply is not json or the
 render fails, the error is logged and the report is still sent: the error, then
 the reply pretty-printed in a `<pre>` block, so nothing is lost. an address with
-no template always gets that json layout. the raw reply is kept beside the
-report as `mail/outbox/<id>/report.json`.
+no template always gets that json layout. the model reply is kept in
+`mail/outbox/<id>/message.json` under `data` — what the template is rendered
+with (the raw text when it is not json).
 
 html-only mail is converted to text. each run takes as much mail as fits in
 `MILTON_WORKER_INPUT_LIMIT` characters (`12000` by default) after the context,

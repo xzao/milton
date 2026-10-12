@@ -200,15 +200,18 @@ def get_context(root, user):
 
 def get_schema(root, user):
 
-    # text
-    text = get_file(root, user, 'template.json')
+    # data
+    data = get_properties(root, user).get('data')
 
-    # text check
-    if text == None:
+    # data check
+    if data == None:
         return ''
 
+    # text
+    text = json.dumps(data, indent = 4, ensure_ascii = False)
+
     # return
-    return f"<file path=\"template.json\">\n{tag_guard(text)}\n</file>\n"
+    return f"{tag_guard(text)}\n"
 
 
 def get_template(root, user):
@@ -254,21 +257,17 @@ def get_message(path):
     return f"<{tag}>\n{tag_guard(mail.body(message))}\n</message>\n"
 
 
-def get_properties(root, user, section):
+def get_properties(root, user):
 
-    # path
-    path = f"{root}/{user}/properties.json"
+    # text
+    text = get_file(root, user, 'template.json')
 
-    # path check
-    if not os.path.isfile(path):
-        return None
-
-    # file read
-    with open(path) as fp:
-        data = json.load(fp)
+    # text check
+    if text == None:
+        return {}
 
     # return
-    return data.get(section)
+    return json.loads(text)
 
 
 def get_key():
@@ -290,7 +289,7 @@ def get_key():
 def list_schedules(root, user):
 
     # schedule[s]
-    schedules = get_properties(root, user, 'schedules') or []
+    schedules = get_properties(root, user).get('schedules') or []
 
     # return
     return schedules
@@ -414,6 +413,14 @@ def generate(prompt, context, messages, schema = ''):
 #
 #   render
 #
+def reply_load(reply):
+
+    # json guard
+    try:
+        return json.loads(reply)
+    except Exception as error:
+        return reply
+
 def reply_pretty(reply):
 
     # json guard
@@ -484,7 +491,7 @@ def process(root, user, schedule, preserve_inbox = False):
     template_text = get_template(root, user)
 
     # properties read
-    section = get_properties(root, user, 'mail') or {}
+    properties = get_properties(root, user)
 
     # mail path[s]
     paths = []
@@ -573,37 +580,34 @@ def process(root, user, schedule, preserve_inbox = False):
     with open(f"{outbox}/message.html", 'w', encoding = 'utf-8') as fp:
         fp.write(html)
 
-    # report file
-    with open(f"{outbox}/report.json", 'w', encoding = 'utf-8') as fp:
-        fp.write(reply)
-
     # to
-    to = section.get('to') or user
+    to = properties.get('to') or user
 
     # subject
-    subject = section.get('subject') or schedule
+    subject = properties.get('subject') or schedule
 
     # cc
-    cc = section.get('cc') or []
+    cc = properties.get('cc') or []
 
     # bcc
-    bcc = section.get('bcc') or []
+    bcc = properties.get('bcc') or []
 
     # sender
-    sender = section.get('from') or user
+    sender = properties.get('from') or user
 
-    # message properties
+    # message data
     data = {
         "from": sender,
         "to": to,
         "subject": subject,
         "cc": cc,
-        "bcc": bcc
+        "bcc": bcc,
+        "data": reply_load(reply)
     }
 
-    # properties file
-    with open(f"{outbox}/properties.json", 'w') as fp:
-        json.dump(data, fp)
+    # message json file
+    with open(f"{outbox}/message.json", 'w', encoding = 'utf-8') as fp:
+        json.dump(data, fp, indent = 4, ensure_ascii = False)
 
     # archive check
     if not preserve_inbox:

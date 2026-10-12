@@ -47,8 +47,8 @@ def send(folder, user):
         logging.debug(f"[{id}] skipped[aws key missing]")
         return False
 
-    # properties read
-    with open(f"{folder}/properties.json") as fp:
+    # message json read
+    with open(f"{folder}/message.json") as fp:
         data = json.load(fp)
 
     # sender

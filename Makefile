@@ -69,8 +69,7 @@ seed:
 	@mkdir -p mnt/etc/milton/emails/$(ADDR)/mail
 	@mkdir -p mnt/etc/milton/emails/$(ADDR)/context
 	@echo 'summarise the new mail.' > mnt/etc/milton/emails/$(ADDR)/prompt.md
-	@echo '{"headline": "", "summary": ""}' > mnt/etc/milton/emails/$(ADDR)/template.json
-	@echo '{"mail": {"from": "$(ADDR)", "to": "$(ADDR)", "subject": "", "cc": [], "bcc": []}, "schedules": ["daily"]}' > mnt/etc/milton/emails/$(ADDR)/properties.json
+	@echo '{"from": "$(ADDR)", "to": "$(ADDR)", "subject": "", "cc": [], "bcc": [], "schedules": ["daily"], "data": {"headline": "", "summary": ""}}' > mnt/etc/milton/emails/$(ADDR)/template.json
 	@sudo chown -R 1000:1000 mnt
 
 shell:

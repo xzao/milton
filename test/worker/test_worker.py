@@ -57,7 +57,7 @@ def message_make(root, user, body = 'hello body', subject = 'test'):
 def properties_make(root, user, properties):
 
     # path
-    path = f"{root}/{user}/properties.json"
+    path = f"{root}/{user}/template.json"
 
     # data
     data = {}
@@ -94,14 +94,13 @@ def prompt_make(root, user, text):
     # return
     return text
 
-def schema_make(root, user, text = '{"title": ""}'):
+def schema_make(root, user, data = {'title': ''}):
 
-    # file write
-    with open(f"{root}/{user}/template.json", 'w') as fp:
-        fp.write(text)
+    # properties make
+    properties_make(root, user, {'data': data})
 
     # return
-    return text
+    return data
 
 def template_make(root, user, text = '<p>{{ title }}</p>'):
 
@@ -488,20 +487,19 @@ def test_generate_keeps_schema_uncut(monkeypatch):
     assert '<schema>' in sent[0][0]['content']
 
 
-def test_get_properties_reads_mail_section(tmp_path):
+def test_get_properties_reads_template_json(tmp_path):
 
     # root
     root = f"{tmp_path}/emails"
 
     # properties
     properties = {
-        'mail'  : {
-            'to'      : 'alice@example.com',
-            'subject' : 'daily digest',
-            'cc'      : ['carol@example.com'],
-            'bcc'     : []
-        },
-        'loose' : 'ignored'
+        'to'        : 'alice@example.com',
+        'subject'   : 'daily digest',
+        'cc'        : ['carol@example.com'],
+        'bcc'       : [],
+        'schedules' : ['daily'],
+        'data'      : {'title': ''}
     }
 
     # user make
@@ -511,22 +509,10 @@ def test_get_properties_reads_mail_section(tmp_path):
     properties_make(root, 'alice@example.com', properties)
 
     # assert
-    assert get_properties(root, 'alice@example.com', 'mail') == properties['mail']
+    assert get_properties(root, 'alice@example.com') == properties
 
 
-def test_get_properties_reads_schedules_section(tmp_path):
-
-    # root
-    root = f"{tmp_path}/emails"
-
-    # user make
-    user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
-
-    # assert
-    assert get_properties(root, 'alice@example.com', 'schedules') == ['daily']
-
-
-def test_get_properties_none_without_file(tmp_path):
+def test_get_properties_empty_without_file(tmp_path):
 
     # root
     root = f"{tmp_path}/emails"
@@ -535,24 +521,7 @@ def test_get_properties_none_without_file(tmp_path):
     user_make(root, 'alice@example.com')
 
     # assert
-    assert get_properties(root, 'alice@example.com', 'mail') == None
-    assert get_properties(root, 'alice@example.com', 'schedules') == None
-
-
-def test_get_properties_none_without_section(tmp_path):
-
-    # root
-    root = f"{tmp_path}/emails"
-
-    # user make
-    user_make(root, 'alice@example.com')
-
-    # properties make
-    properties_make(root, 'alice@example.com', {'loose': 'info'})
-
-    # assert
-    assert get_properties(root, 'alice@example.com', 'mail') == None
-    assert get_properties(root, 'alice@example.com', 'schedules') == None
+    assert get_properties(root, 'alice@example.com') == {}
 
 
 def test_get_key_reads_env(monkeypatch):
@@ -708,16 +677,15 @@ def test_process_writes_report_and_archives_inbox(tmp_path, monkeypatch):
     with open(f"{outbox}/{report_id}/message.html", encoding = 'utf-8') as fp:
         assert fp.read() == '<p>stub report</p>'
 
-    # properties data
-    with open(f"{outbox}/{report_id}/properties.json") as fp:
+    # message data
+    with open(f"{outbox}/{report_id}/message.json") as fp:
         data = json.load(fp)
 
     # assert
-    assert data == {'from': 'alice@example.com', 'to': 'alice@example.com', 'subject': 'daily', 'cc': [], 'bcc': []}
+    assert data == {'from': 'alice@example.com', 'to': 'alice@example.com', 'subject': 'daily', 'cc': [], 'bcc': [], 'data': {'title': 'stub report'}}
 
-    # report file
-    with open(f"{outbox}/{report_id}/report.json", encoding = 'utf-8') as fp:
-        assert fp.read() == '{"title": "stub report"}'
+    # file[s]
+    assert sorted(os.listdir(f"{outbox}/{report_id}")) == ['message.html', 'message.json']
 
     # inbox empty
     assert os.listdir(f"{root}/alice@example.com/mail/inbox") == []
@@ -729,20 +697,18 @@ def test_process_writes_report_and_archives_inbox(tmp_path, monkeypatch):
     assert result == None
 
 
-def test_process_writes_properties_from_mail_section(tmp_path, monkeypatch):
+def test_process_writes_message_json_from_template_json(tmp_path, monkeypatch):
 
     # root
     root = f"{tmp_path}/emails"
 
     # properties
     properties = {
-        'mail' : {
-            'from'    : 'reports@example.com',
-            'to'      : 'team@example.com',
-            'subject' : 'daily digest',
-            'cc'      : ['carol@example.com'],
-            'bcc'     : ['bob@example.com']
-        }
+        'from'    : 'reports@example.com',
+        'to'      : 'team@example.com',
+        'subject' : 'daily digest',
+        'cc'      : ['carol@example.com'],
+        'bcc'     : ['bob@example.com']
     }
 
     # user make
@@ -766,8 +732,8 @@ def test_process_writes_properties_from_mail_section(tmp_path, monkeypatch):
     # report id
     report_id = os.listdir(outbox)[0]
 
-    # properties data
-    with open(f"{outbox}/{report_id}/properties.json") as fp:
+    # message data
+    with open(f"{outbox}/{report_id}/message.json") as fp:
         data = json.load(fp)
 
     # assert
@@ -776,7 +742,8 @@ def test_process_writes_properties_from_mail_section(tmp_path, monkeypatch):
         'to'      : 'team@example.com',
         'subject' : 'daily digest',
         'cc'      : ['carol@example.com'],
-        'bcc'     : ['bob@example.com']
+        'bcc'     : ['bob@example.com'],
+        'data'    : {'title': 'stub report'}
     }
 
 
@@ -1076,23 +1043,26 @@ def test_process_defers_mail_over_input_limit(tmp_path, monkeypatch):
     assert sorted(os.listdir(f"{root}/alice@example.com/mail/inbox")) == sorted(ids[1:])
 
 
-def test_get_schema_reads_root_json(tmp_path):
+def test_get_schema_reads_data_only(tmp_path):
 
     # root
     root = f"{tmp_path}/emails"
 
     # user make
-    user_make(root, 'alice@example.com')
+    user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
+
+    # properties make
+    properties_make(root, 'alice@example.com', {'to': 'team@example.com'})
 
     # schema make
-    schema_make(root, 'alice@example.com', '{"title": ""}')
+    schema_make(root, 'alice@example.com', {'title': ''})
 
     # context make
     with open(f"{root}/alice@example.com/context/package.json", 'w') as fp:
         fp.write('{"name": "app"}')
 
     # assert
-    assert get_schema(root, 'alice@example.com') == '<file path="template.json">\n{"title": ""}\n</file>\n'
+    assert get_schema(root, 'alice@example.com') == '{\n    "title": ""\n}\n'
     assert get_context(root, 'alice@example.com') == '<file path="context/package.json">\n{"name": "app"}\n</file>\n'
 
 
@@ -1201,9 +1171,14 @@ def test_process_bad_json_sends_fallback(tmp_path, monkeypatch):
     with open(f"{outbox}/{os.listdir(outbox)[0]}/message.html", encoding = 'utf-8') as fp:
         html = fp.read()
 
+    # message data
+    with open(f"{outbox}/{os.listdir(outbox)[0]}/message.json") as fp:
+        data = json.load(fp)
+
     # assert
     assert 'report render failed' in html
     assert 'sorry, no json today' in html
+    assert data['data'] == 'sorry, no json today'
     assert os.listdir(f"{root}/alice@example.com/mail/archive") == [id]
 
 
@@ -1299,5 +1274,6 @@ def test_process_passes_schema_to_generate(tmp_path, monkeypatch):
     content = sent[0][1]['content']
 
     # assert
-    assert '<schema>\n<file path="template.json">\n{"title": ""}\n</file>\n</schema>' in content
+    assert '<schema>\n{\n    "title": ""\n}\n</schema>' in content
+    assert 'schedules' not in content
     assert '{{ title }}' not in content

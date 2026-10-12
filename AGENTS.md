@@ -213,7 +213,7 @@ def env_int(name, default):
 - Small helpers used by one section live in that section, above the function
   that uses them (`text_cut` and `json_extract` sit in `#   generate`,
   `tag_guard`, `get_text` and `get_file` head `#   get[s]`,
-  `reply_pretty` heads `#   render`).
+  `reply_load` and `reply_pretty` head `#   render`).
 - Handle exceptions with `raise Exception('<lowercase message>')`. Messages are
   lowercase, unpunctuated, and use bracket context where useful:
   `raise Exception('report missing recipient')`,
@@ -352,7 +352,7 @@ import zoneinfo
 - Function prefixes carry meaning and should be reused:
   - `get_*` — fetch one value (`get_text`, `get_file`, `get_prompt`,
     `get_context`, `get_schema`, `get_template`,
-    `get_properties(root, user, section)`, `get_key`).
+    `get_properties(root, user)`, `get_key`).
   - `list_*` — fetch many, return a list (`list_schedules`).
   - `emails` / `valid` — infer valid addresses from the data tree.
   - `<noun>_<verb>` — a small transform (`text_cut`, `json_extract`); in tests,
@@ -449,7 +449,7 @@ under `src/` with a `main.py` and a `requirements.txt`, wired in
   failures.
 - **worker** — `main.py` schedules; `task.py` runs one report.
   - `register()` adds one `scheduler` job per entry in the address
-    `properties.json` `schedules` list (and makes the `mail/` folders). The
+    `template.json` `schedules` list (and makes the `mail/` folders). The
     loop calls it again every `MILTON_WORKER_RELOAD` seconds, adding and
     removing only the jobs that changed, and runs them via
     `scheduler.exec_jobs()`. All schedules of an address share one inbox, so
@@ -481,15 +481,16 @@ under `src/` with a `main.py` and a `requirements.txt`, wired in
     error and sends `fallback(reply, error)`: the error, then the reply
     (pretty-printed when it parses) in a `<pre>`. An address with no
     `template.html` always gets `fallback(reply)`.
-  - The report is one `mail/outbox/<uuid7>/` folder: `message.html`,
-    `properties.json` (from/to/subject/cc/bcc from the address `mail`
-    section) and `report.json` (the raw reply). The batch then moves to
+  - The report is one `mail/outbox/<uuid7>/` folder: `message.html` and
+    `message.json` — from/to/subject/cc/bcc from the address `template.json`,
+    plus `data`, the model reply the template renders (the json object, or
+    the raw text when it does not parse; `reply_load`). The batch then moves to
     `mail/archive` — unless `preserve_inbox = True`, which `bin/milton worker
     process [address] --preserve-inbox` (and `make process`) uses to preview
     a report with the fixed schedule label `preview`.
 - **dispatcher** — scans each user's `mail/outbox`, validates the recipient,
   sends `message.html` with amazon ses (`message.py` builds the destination and
-  content from `properties.json`), and moves the report to `mail/sent`. `send`
+  content from `message.json`), and moves the report to `mail/sent`. `send`
   returns `False` without sending when `AWS_SECRET_ACCESS_KEY` is unset.
 
 `src/shared/` holds the reusable pieces: `util` (env + address inference),
@@ -512,9 +513,8 @@ linked to `/etc/milton` in the devcontainer and bind-mounted at `/etc/milton`
 by compose:
 
 ```
-/etc/milton/emails/<email>/properties.json  address settings (mail, schedules sections)
+/etc/milton/emails/<email>/template.json    address settings: mail headers, schedules, data
 /etc/milton/emails/<email>/prompt.md        prompt text, shared by all schedules
-/etc/milton/emails/<email>/template.json    reply schema the model fills in (optional)
 /etc/milton/emails/<email>/template.html    jinja2 email template (optional)
 /etc/milton/emails/<email>/context/         reference files, every file sent
 /etc/milton/emails/<email>/mail/            inbox / outbox / sent / archive
@@ -523,22 +523,26 @@ by compose:
 A `<email>` is valid when its `mail/` folder exists. `util.emails(EMAILS)` lists
 them; `util.valid(EMAILS, address)` checks one.
 
-`properties.json` holds the address settings, one section per concern:
+`template.json` holds the address settings, read through `get_properties`.
+It is the shape of every `mail/outbox/<uuid7>/message.json`, which carries the
+same headers, resolved, and `data` filled in:
 
-- `mail` — `from`, `to`, `subject`, `cc`, `bcc`, copied into every
-  `mail/outbox/<uuid7>/properties.json` and applied by the dispatcher. `from`
-  and `to` default to the address, `subject` to the schedule.
+- `from`, `to`, `subject`, `cc`, `bcc` — the report headers, copied into
+  `message.json` and applied by the dispatcher. `from` and `to` default to the
+  address, `subject` to the schedule.
 - `schedules` — the schedules to run; a schedule exists when it is listed.
   An entry is an interval token (`5m`, `30m`, `1h`, `daily`, `weekly`, via
   `task.interval` and `jobs.cyclic`) or a day list and `HH:MM` times
   (`daily 08:00`, `weekdays 08:30 17:00`, `mon,fri 09:00`, via `task.timing`
   and `jobs.weekly`) in the `TZ` zone (`UTC` by default). `register` logs and
   skips an entry `timing` refuses.
+- `data` — the json skeleton the model fills in, sent as the `<schema>` (via
+  `get_schema`; the headers and schedules never reach the model). Without it
+  the model designs its own json.
 
 Every schedule shares the address `prompt.md` (required; `get_prompt` raises
-`prompt missing` without it) and its template pair: `template.json` (without
-it the model designs its own json) and `template.html` (without it the report
-is the json in a `<pre>`).
+`prompt missing` without it) and `template.html` (without it the report is the
+json in a `<pre>`).
 
 Environment variables carry a **project prefix**:
 
@@ -599,8 +603,7 @@ them from `$(MAKECMDGOALS)`:
 - `process` previews a report for `MILTON_CLI_WORKER_ADDRESS` (every address
   when empty) without consuming the inbox;
 - `seed ADDR=you@example.com` creates a new address folder with `mail/`,
-  `context/`, a `prompt.md`, a `template.json` and a `properties.json`
-  scheduled `daily`;
+  `context/`, a `prompt.md` and a `template.json` scheduled `daily`;
 - `test [component ...]` runs one test folder (all of `test/` by default);
 - `upgrade` pulls and rebuilds the stack; `version <x.y.z>` writes `VERSION`,
   commits and tags `v<x.y.z>` on a clean tree.
