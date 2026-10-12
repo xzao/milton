@@ -27,6 +27,7 @@ mounted by compose):
 /etc/milton/emails/<email>/context          read-only context for the prompts
 /etc/milton/emails/<email>/prompt.md        prompt text (shared by all schedules)
 /etc/milton/emails/<email>/template.html    jinja2 email template (optional)
+/etc/milton/skel                            files every new address starts with
 ```
 
 an `<email>` is valid when its `mail/` folder exists.
@@ -52,7 +53,7 @@ or more `HH:MM` times:
 
 timed schedules run in `MILTON_TIMEZONE` (an iana name such as
 `Australia/Melbourne`; `UTC` by default), daylight saving included. docker
-compose (and the Makefile, for `make develop` / `make process`) passes it to
+compose (and the Makefile, for `make develop` / `make preview`) passes it to
 every service as `TZ`, so log timestamps use it too. an entry
 with an unknown day or time is logged and skipped.
 
@@ -93,11 +94,23 @@ schedule edits need no restart.
 ```
 make develop [receiver worker dispatcher]   run services locally (all three by default)
 make flush [address ...]           clear unsent reports from mail/outbox (asks first)
-make seed ADDR=you@example.com     create a new address
+make init you@example.com         create a new address from /etc/milton/skel
+make preview                       preview a report without consuming the inbox
 make start                         build and start the stack
 make logs                          follow service logs
 bin/milton worker process [address] [--preserve-inbox]   process on demand
 ```
+
+`make init <email>` creates `/etc/milton/emails/<email>/` with `mail/`,
+`context/` and a copy of every file in `/etc/milton/skel` — a `prompt.md`,
+`template.json` and `template.html` to edit. `from` and `to` can stay empty in
+the skel's `template.json`: they default to the address. it refuses an address
+that already exists.
+
+the defaults are committed in the repo `etc/milton/skel/`. `make install` (run
+when the devcontainer is created) copies them into `/etc/milton/skel`, keeping
+any file already there, so edit the copy in `/etc/milton/skel` to change what
+new addresses start with locally.
 
 `bin/milton` runs a service command on demand (`milton <service> <command>`).
 `worker process` runs `task.process` once per address (`[address]` narrows it to

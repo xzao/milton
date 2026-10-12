@@ -6,6 +6,7 @@
 
 # data (linked + mounted, not built)
 mnt
+etc
 
 # py
 __pycache__

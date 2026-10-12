@@ -1,0 +1,20 @@
+{
+    "from": "",
+    "to": "",
+    "subject": "",
+    "cc": [],
+    "bcc": [],
+    "schedules": [
+        "daily 08:00"
+    ],
+    "data": {
+        "headline": "",
+        "summary": "",
+        "items": [
+            {
+                "title": "",
+                "detail": ""
+            }
+        ]
+    }
+}

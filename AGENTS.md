@@ -43,6 +43,7 @@ milton/
 ├── test/
 │   ├── conftest.py          adds src/ to sys.path for imports
 │   └── receiver/  worker/  dispatcher/  shared/
+├── etc/milton/skel/         new address files, copied to /etc/milton/skel by `make install`
 ├── mnt/                     runtime data — not committed (linked/mounted at /etc/milton)
 ├── .devcontainer/           devcontainer (runs `make install`)
 ├── Makefile
@@ -58,7 +59,7 @@ milton/
 Rules:
 
 - Code lives under `src/`; developer commands under `bin/`; data lives under
-  `mnt/`.
+  `mnt/`; the committed default address files live under `etc/milton/skel/`.
 - Three services, one per directory, each with its own `main.py` and
   `requirements.txt`.
 - `src/shared/` holds code used by more than one service; it is copied into
@@ -486,7 +487,7 @@ under `src/` with a `main.py` and a `requirements.txt`, wired in
     plus `data`, the model reply the template renders (the json object, or
     the raw text when it does not parse; `reply_load`). The batch then moves to
     `mail/archive` — unless `preserve_inbox = True`, which `bin/milton worker
-    process [address] --preserve-inbox` (and `make process`) uses to preview
+    process [address] --preserve-inbox` (and `make preview`) uses to preview
     a report with the fixed schedule label `preview`.
 - **dispatcher** — scans each user's `mail/outbox`, validates the recipient,
   sends `message.html` with amazon ses (`message.py` builds the destination and
@@ -518,6 +519,7 @@ by compose:
 /etc/milton/emails/<email>/template.html    jinja2 email template (optional)
 /etc/milton/emails/<email>/context/         reference files, every file sent
 /etc/milton/emails/<email>/mail/            inbox / outbox / sent / archive
+/etc/milton/skel/                           new address files (from the repo `etc/milton/skel/`), copied by `make init`
 ```
 
 A `<email>` is valid when its `mail/` folder exists. `util.emails(EMAILS)` lists
@@ -567,7 +569,7 @@ MILTON_CLI_WORKER_ADDRESS
 pass it on as the standard `TZ` (`UTC` by default), which sets log timestamps
 and the worker's schedule zone.
 
-`MILTON_CLI_*` variables feed developer commands only (`make process` passes
+`MILTON_CLI_*` variables feed developer commands only (`make preview` passes
 `MILTON_CLI_WORKER_ADDRESS` to `bin/milton worker process`); no service reads
 them. Every variable has a default in code (`util.env` / `util.env_int`),
 and an empty value counts as unset.
@@ -591,7 +593,7 @@ recipe just runs something (`@python bin/milton ...`, `@clear`, `@git pull`).
 `.DEFAULT_GOAL` is `logs`; every target belongs in `.PHONY`.
 
 Targets are one lowercase word and alphabetical inside `#\ttarget[s]`:
-`develop`, `flush`, `install`, `logs`, `process`, `restart`, `seed`, `shell`,
+`develop`, `flush`, `init`, `install`, `logs`, `preview`, `restart`, `shell`,
 `start`, `stop`, `test`, `upgrade`, `version`. A `%` catch-all in its own
 last section, `#\targ[s]`, swallows extra goal arguments so targets can read
 them from `$(MAKECMDGOALS)`:
@@ -600,10 +602,16 @@ them from `$(MAKECMDGOALS)`:
   (`receiver`, `worker`, `dispatcher` — all three by default);
 - `flush [address ...]` lists the reports in `mail/outbox` (every address by
   default) and deletes them only after a `y` confirm;
-- `process` previews a report for `MILTON_CLI_WORKER_ADDRESS` (every address
+- `init <email>` creates a new address folder — `mail/`, `context/` and a
+  copy of everything in `/etc/milton/skel` (`prompt.md`, `template.json`,
+  `template.html`), owned by `MILTON_UID` / `MILTON_GID`; it refuses an
+  argument without `@`, an existing address and a missing skel;
+- `install` (run by the devcontainer) links `/etc/milton` to `mnt/etc/milton`,
+  copies the repo `etc/milton/skel/` into `/etc/milton/skel` without
+  overwriting files already there (`cp --update=none`, so local edits
+  survive), and installs the requirements;
+- `preview` previews a report for `MILTON_CLI_WORKER_ADDRESS` (every address
   when empty) without consuming the inbox;
-- `seed ADDR=you@example.com` creates a new address folder with `mail/`,
-  `context/`, a `prompt.md` and a `template.json` scheduled `daily`;
 - `test [component ...]` runs one test folder (all of `test/` by default);
 - `upgrade` pulls and rebuilds the stack; `version <x.y.z>` writes `VERSION`,
   commits and tags `v<x.y.z>` on a clean tree.

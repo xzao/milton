@@ -2,7 +2,7 @@
 #	Makefile
 #
 .DEFAULT_GOAL := logs
-.PHONY: develop flush install logs restart seed shell start stop test
+.PHONY: develop flush init install logs preview restart shell start stop test upgrade version
 
 
 #
@@ -47,9 +47,32 @@ flush:
 	echo "$$reports" | xargs rm -rf; \
 	echo "outbox flushed"
 
+init:
+	@address="$(filter-out $@,$(MAKECMDGOALS))"; \
+	skel="/etc/milton/skel"; \
+	folder="mnt/etc/milton/emails/$$address"; \
+	case "$$address" in \
+		*@*) ;; \
+		*) echo "usage: make init <email>"; exit 1 ;; \
+	esac; \
+	if [ ! -d "$$skel" ]; then \
+		echo "skel missing '$$skel'"; \
+		exit 1; \
+	fi; \
+	if [ -e "$$folder" ]; then \
+		echo "address exists '$$folder'"; \
+		exit 1; \
+	fi; \
+	mkdir -p "$$folder/mail" "$$folder/context"; \
+	cp -r "$$skel/." "$$folder/"; \
+	sudo chown -R $(or $(MILTON_UID),1000):$(or $(MILTON_GID),1000) "$$folder"; \
+	echo "address created '$$folder'"
+
 install:
 	mkdir -p $(CURDIR)/mnt/etc/milton
 	sudo ln -sfnT $(CURDIR)/mnt/etc/milton /etc/milton
+	mkdir -p /etc/milton/skel
+	cp -r --update=none $(CURDIR)/etc/milton/skel/. /etc/milton/skel/
 	pip install pytest
 	pip install -r src/receiver/requirements.txt
 	pip install -r src/worker/requirements.txt
@@ -64,13 +87,6 @@ preview:
 restart:
 	make stop
 	make start
-
-seed:
-	@mkdir -p mnt/etc/milton/emails/$(ADDR)/mail
-	@mkdir -p mnt/etc/milton/emails/$(ADDR)/context
-	@echo 'summarise the new mail.' > mnt/etc/milton/emails/$(ADDR)/prompt.md
-	@echo '{"from": "$(ADDR)", "to": "$(ADDR)", "subject": "", "cc": [], "bcc": [], "schedules": ["daily"], "data": {"headline": "", "summary": ""}}' > mnt/etc/milton/emails/$(ADDR)/template.json
-	@sudo chown -R 1000:1000 mnt
 
 shell:
 	docker exec -it receiver bash

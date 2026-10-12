@@ -1,0 +1,36 @@
+{%- set font = "font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif;" -%}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 0; padding: 0; background: #ffffff;">
+    <tr>
+        <td align="center" style="padding: 32px 16px;">
+            <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width: 100%; max-width: 600px; border-collapse: collapse;">
+
+                <tr>
+                    <td style="padding: 0 0 20px 0; border-bottom: 1px solid #d2d2d7;">
+                        <div style="{{ font }} font-size: 26px; line-height: 1.2; font-weight: 600; color: #1d1d1f;">{{ headline }}</div>
+                        <div style="{{ font }} font-size: 15px; line-height: 1.55; color: #6e6e73; padding: 8px 0 0 0;">{{ summary }}</div>
+                    </td>
+                </tr>
+
+                {%- for item in items %}
+
+                <tr>
+                    <td style="padding: 16px 0; border-bottom: 1px solid #e8e8ed;">
+                        <div style="{{ font }} font-size: 16px; line-height: 1.35; font-weight: 600; color: #1d1d1f;">{{ item.title }}</div>
+                        <div style="{{ font }} font-size: 14px; line-height: 1.5; color: #6e6e73; padding: 4px 0 0 0;">{{ item.detail }}</div>
+                    </td>
+                </tr>
+
+                {%- else %}
+
+                <tr>
+                    <td style="padding: 16px 0;">
+                        <div style="{{ font }} font-size: 15px; line-height: 1.55; color: #6e6e73;">Nothing to report.</div>
+                    </td>
+                </tr>
+
+                {%- endfor %}
+
+            </table>
+        </td>
+    </tr>
+</table>
