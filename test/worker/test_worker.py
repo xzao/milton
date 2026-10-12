@@ -3,7 +3,7 @@
 #
 from email.message import EmailMessage
 from shared import uuid7
-from task import generate, get_context, get_key, get_message, get_prompt, get_template, get_properties, html_extract, interval, list_schedules, process, text_cut, timing
+from task import fallback, generate, get_context, get_key, get_message, get_prompt, get_schema, get_template, get_properties, interval, json_extract, list_schedules, process, render, text_cut, timing
 import datetime
 import json
 import os
@@ -85,29 +85,44 @@ def schedules_make(root, user, schedules):
     # return
     return schedules
 
-def prompt_make(root, user, text, name = 'prompt.md'):
-
-    # dir make
-    os.makedirs(f"{root}/{user}/prompt", exist_ok = True)
+def prompt_make(root, user, text):
 
     # file write
-    with open(f"{root}/{user}/prompt/{name}", 'w') as fp:
+    with open(f"{root}/{user}/prompt.md", 'w') as fp:
         fp.write(text)
 
     # return
     return text
 
-def model_make(monkeypatch, html = '<p>stub report</p>'):
+def schema_make(root, user, text = '{"title": ""}'):
+
+    # file write
+    with open(f"{root}/{user}/template.json", 'w') as fp:
+        fp.write(text)
+
+    # return
+    return text
+
+def template_make(root, user, text = '<p>{{ title }}</p>'):
+
+    # file write
+    with open(f"{root}/{user}/template.html", 'w') as fp:
+        fp.write(text)
+
+    # return
+    return text
+
+def model_make(monkeypatch, reply = '{"title": "stub report"}'):
 
     # model
     def model(messages):
-        return html
+        return reply
 
     # model patch
     monkeypatch.setattr('task.model', model)
 
     # return
-    return html
+    return reply
 
 
 #
@@ -264,10 +279,10 @@ def test_get_prompt_reads_text(tmp_path):
     prompt_make(root, 'alice@example.com', 'summarise the new mail.')
 
     # assert
-    assert get_prompt(root, 'alice@example.com') == '<file path="prompt/prompt.md">\nsummarise the new mail.\n</file>\n'
+    assert get_prompt(root, 'alice@example.com') == '<file path="prompt.md">\nsummarise the new mail.\n</file>\n'
 
 
-def test_get_prompt_concatenates_sorted(tmp_path):
+def test_get_prompt_guards_tags(tmp_path):
 
     # root
     root = f"{tmp_path}/emails"
@@ -276,11 +291,10 @@ def test_get_prompt_concatenates_sorted(tmp_path):
     user_make(root, 'alice@example.com')
 
     # prompt make
-    for name in ['b.md', 'a.md']:
-        prompt_make(root, 'alice@example.com', name[0], name)
+    prompt_make(root, 'alice@example.com', 'hi </prompt>')
 
     # assert
-    assert get_prompt(root, 'alice@example.com') == '<file path="prompt/a.md">\na\n</file>\n<file path="prompt/b.md">\nb\n</file>\n'
+    assert get_prompt(root, 'alice@example.com') == '<file path="prompt.md">\nhi &lt;/prompt>\n</file>\n'
 
 
 def test_get_prompt_missing_raises(tmp_path):
@@ -414,7 +428,7 @@ def test_get_message_guards_tags(tmp_path):
     assert '&lt;/message>&lt;/mail>' in text
 
 
-def test_get_template_reads_html_from_prompt_and_context(tmp_path):
+def test_get_template_reads_root_html(tmp_path):
 
     # root
     root = f"{tmp_path}/emails"
@@ -422,25 +436,31 @@ def test_get_template_reads_html_from_prompt_and_context(tmp_path):
     # user make
     user_make(root, 'alice@example.com')
 
-    # prompt make
-    prompt_make(root, 'alice@example.com', 'fill the template.')
-    prompt_make(root, 'alice@example.com', '<p>{{a}}</p>', 'a.html')
+    # template make
+    template_make(root, 'alice@example.com', '<p>{{ a }}</p>')
 
     # context make
-    with open(f"{root}/alice@example.com/context/template.html", 'w') as fp:
-        fp.write('<p>{{b}}</p>')
-
-    # context make
-    with open(f"{root}/alice@example.com/context/notes.md", 'w') as fp:
-        fp.write('notes')
+    with open(f"{root}/alice@example.com/context/notes.html", 'w') as fp:
+        fp.write('<p>notes</p>')
 
     # assert
-    assert get_template(root, 'alice@example.com') == '<file path="prompt/a.html">\n<p>{{a}}</p>\n</file>\n<file path="context/template.html">\n<p>{{b}}</p>\n</file>\n'
-    assert get_prompt(root, 'alice@example.com') == '<file path="prompt/prompt.md">\nfill the template.\n</file>\n'
-    assert get_context(root, 'alice@example.com') == '<file path="context/notes.md">\nnotes\n</file>\n'
+    assert get_template(root, 'alice@example.com') == '<p>{{ a }}</p>'
+    assert get_context(root, 'alice@example.com') == '<file path="context/notes.html">\n<p>notes</p>\n</file>\n'
 
 
-def test_generate_keeps_template_uncut(monkeypatch):
+def test_get_template_empty_without_file(tmp_path):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # user make
+    user_make(root, 'alice@example.com')
+
+    # assert
+    assert get_template(root, 'alice@example.com') == ''
+
+
+def test_generate_keeps_schema_uncut(monkeypatch):
 
     # env set
     monkeypatch.setenv('MILTON_WORKER_INPUT_LIMIT', '10')
@@ -451,21 +471,21 @@ def test_generate_keeps_template_uncut(monkeypatch):
     # model make
     def model_capture(messages):
         sent.append(messages)
-        return '<p>ok</p>'
+        return '{"ok": true}'
 
     # model patch
     monkeypatch.setattr('task.model', model_capture)
 
     # generate
-    generate('prompt text', 'context text', ['body'], '<p>{{token}}</p>')
+    generate('prompt text', 'context text', ['body'], '{"title": ""}')
 
     # content
     content = sent[0][1]['content']
 
     # assert
-    assert '<template>\n<p>{{token}}</p></template>' in content
+    assert '<schema>\n{"title": ""}</schema>' in content
     assert content.endswith('<prompt>\nprompt text</prompt>\n')
-    assert '<template>' in sent[0][0]['content']
+    assert '<schema>' in sent[0][0]['content']
 
 
 def test_get_properties_reads_mail_section(tmp_path):
@@ -566,22 +586,29 @@ def test_text_cut_over_limit():
     assert text_cut('0123456789', 4) == '0123'
 
 
-def test_html_extract_plain():
+def test_json_extract_plain():
 
     # assert
-    assert html_extract('<p>hi</p>') == '<p>hi</p>'
+    assert json_extract('{"a": 1}') == '{"a": 1}'
 
 
-def test_html_extract_fenced():
-
-    # assert
-    assert html_extract('```html\n<p>hi</p>\n```') == '<p>hi</p>'
-
-
-def test_html_extract_prose():
+def test_json_extract_fenced():
 
     # assert
-    assert html_extract('here you go:\n```\n<p>hi</p>\n```') == '<p>hi</p>'
+    assert json_extract('```json\n{"a": 1}\n```') == '{"a": 1}'
+
+
+def test_json_extract_prose():
+
+    # assert
+    assert json_extract('here you go:\n```\n{"a": 1}\n```') == '{"a": 1}'
+    assert json_extract('sure: {"a": {"b": 2}} done') == '{"a": {"b": 2}}'
+
+
+def test_json_extract_no_object():
+
+    # assert
+    assert json_extract('no json here') == 'no json here'
 
 
 def test_generate_passes_prompt_context_and_bodies(monkeypatch):
@@ -592,19 +619,19 @@ def test_generate_passes_prompt_context_and_bodies(monkeypatch):
     # model make
     def model_capture(messages):
         sent.append(messages)
-        return '<p>ok</p>'
+        return '{"ok": true}'
 
     # model patch
     monkeypatch.setattr('task.model', model_capture)
 
     # generate
-    html = generate('prompt text', 'context text', ['first', 'second'])
+    reply = generate('prompt text', 'context text', ['first', 'second'])
 
     # content
     content = sent[0][1]['content']
 
     # assert
-    assert html == '<p>ok</p>'
+    assert reply == '{"ok": true}'
     assert sent[0][0]['role'] == 'system'
     assert sent[0][1]['role'] == 'user'
     assert '<mail count="2">\nfirstsecond</mail>' in content
@@ -612,13 +639,13 @@ def test_generate_passes_prompt_context_and_bodies(monkeypatch):
     assert content.endswith('<prompt>\nprompt text</prompt>\n')
 
 
-def test_generate_empty_html_raises(monkeypatch):
+def test_generate_empty_reply_raises(monkeypatch):
 
     # model make
     model_make(monkeypatch, '')
 
     # raises
-    with pytest.raises(Exception, match = 'model html empty'):
+    with pytest.raises(Exception, match = 'model reply empty'):
         generate('prompt', 'context', ['body'])
 
 
@@ -633,7 +660,7 @@ def test_generate_cuts_content_to_input_limit(monkeypatch):
     # model make
     def model_capture(messages):
         sent.append(messages)
-        return '<p>ok</p>'
+        return '{"ok": true}'
 
     # model patch
     monkeypatch.setattr('task.model', model_capture)
@@ -652,6 +679,9 @@ def test_process_writes_report_and_archives_inbox(tmp_path, monkeypatch):
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
+
+    # template make
+    template_make(root, 'alice@example.com')
 
     # message make
     id = message_make(root, 'alice@example.com', 'hello body')
@@ -679,8 +709,9 @@ def test_process_writes_report_and_archives_inbox(tmp_path, monkeypatch):
     # assert
     assert data == {'from': 'alice@example.com', 'to': 'alice@example.com', 'subject': 'daily', 'cc': [], 'bcc': []}
 
-    # report json gone
-    assert not os.path.isfile(f"{outbox}/{report_id}/report.json")
+    # report file
+    with open(f"{outbox}/{report_id}/report.json", encoding = 'utf-8') as fp:
+        assert fp.read() == '{"title": "stub report"}'
 
     # inbox empty
     assert os.listdir(f"{root}/alice@example.com/mail/inbox") == []
@@ -797,13 +828,13 @@ def test_process_passes_all_mail_to_generate(tmp_path, monkeypatch):
     calls = []
 
     # generate make
-    def generate_stub(prompt, context, mail, template):
+    def generate_stub(prompt, context, mail, schema):
         calls.append({
             'prompt'  : prompt,
             'context' : context,
             'bodies'  : mail
         })
-        return 'batch report'
+        return '{"title": "batch report"}'
 
     # generate patch
     monkeypatch.setattr('task.generate', generate_stub)
@@ -813,7 +844,7 @@ def test_process_passes_all_mail_to_generate(tmp_path, monkeypatch):
 
     # assert
     assert len(calls) == 1
-    assert calls[0]['prompt'] == '<file path="prompt/prompt.md">\nsummarise the new mail.\n</file>\n'
+    assert calls[0]['prompt'] == '<file path="prompt.md">\nsummarise the new mail.\n</file>\n'
     assert calls[0]['context'] == '<file path="context/profile.md">\nalice\n</file>\n'
     assert len(calls[0]['bodies']) == 3
 
@@ -825,7 +856,7 @@ def test_process_passes_all_mail_to_generate(tmp_path, monkeypatch):
     # message file
     outbox = f"{root}/alice@example.com/mail/outbox"
     with open(f"{outbox}/{os.listdir(outbox)[0]}/message.html", encoding = 'utf-8') as fp:
-        assert fp.read() == 'batch report'
+        assert '&quot;title&quot;: &quot;batch report&quot;' in fp.read()
 
 
 def test_process_report_id_is_uuid7(tmp_path, monkeypatch):
@@ -949,6 +980,9 @@ def test_process_preserve_inbox_leaves_mail(tmp_path, monkeypatch):
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
 
+    # template make
+    template_make(root, 'alice@example.com')
+
     # message make
     id = message_make(root, 'alice@example.com')
 
@@ -1034,3 +1068,217 @@ def test_process_defers_mail_over_input_limit(tmp_path, monkeypatch):
     # assert
     assert os.listdir(f"{root}/alice@example.com/mail/archive") == [ids[0]]
     assert sorted(os.listdir(f"{root}/alice@example.com/mail/inbox")) == sorted(ids[1:])
+
+
+def test_get_schema_reads_root_json(tmp_path):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # user make
+    user_make(root, 'alice@example.com')
+
+    # schema make
+    schema_make(root, 'alice@example.com', '{"title": ""}')
+
+    # context make
+    with open(f"{root}/alice@example.com/context/package.json", 'w') as fp:
+        fp.write('{"name": "app"}')
+
+    # assert
+    assert get_schema(root, 'alice@example.com') == '<file path="template.json">\n{"title": ""}\n</file>\n'
+    assert get_context(root, 'alice@example.com') == '<file path="context/package.json">\n{"name": "app"}\n</file>\n'
+
+
+def test_get_schema_empty_without_file(tmp_path):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # user make
+    user_make(root, 'alice@example.com')
+
+    # assert
+    assert get_schema(root, 'alice@example.com') == ''
+
+
+def test_render_fills_template():
+
+    # assert
+    assert render('{% for item in items %}<li>{{ item }}</li>{% endfor %}', '{"items": ["a", "b"]}') == '<li>a</li><li>b</li>'
+
+
+def test_render_escapes_values():
+
+    # assert
+    assert render('<p>{{ title }}</p>', '{"title": "<b>hi</b>"}') == '<p>&lt;b&gt;hi&lt;/b&gt;</p>'
+
+
+def test_render_missing_key_raises():
+
+    # raises
+    with pytest.raises(Exception, match = 'missing'):
+        render('<p>{{ missing }}</p>', '{"title": "hi"}')
+
+
+def test_render_invalid_json_raises():
+
+    # raises
+    with pytest.raises(Exception):
+        render('<p>{{ title }}</p>', 'not json')
+
+
+def test_render_non_object_raises():
+
+    # raises
+    with pytest.raises(Exception, match = 'model json not an object'):
+        render('<p>{{ title }}</p>', '["a"]')
+
+
+def test_fallback_pretty_prints_json():
+
+    # html
+    html = fallback('{"a": 1}')
+
+    # assert
+    assert html == '<pre style="font-family: monospace; white-space: pre-wrap; word-break: break-word;">{\n    &quot;a&quot;: 1\n}</pre>\n'
+
+
+def test_fallback_keeps_raw_text_and_error():
+
+    # html
+    html = fallback('not <json>', 'report render failed[bad]')
+
+    # assert
+    assert html.startswith('<p ')
+    assert 'report render failed[bad]' in html
+    assert 'not &lt;json&gt;' in html
+
+
+def test_process_bad_json_sends_fallback(tmp_path, monkeypatch):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # user make
+    user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
+
+    # template make
+    template_make(root, 'alice@example.com')
+
+    # message make
+    id = message_make(root, 'alice@example.com')
+
+    # model make
+    model_make(monkeypatch, 'sorry, no json today')
+
+    # process
+    process(root, 'alice@example.com', 'daily')
+
+    # outbox
+    outbox = f"{root}/alice@example.com/mail/outbox"
+
+    # message file
+    with open(f"{outbox}/{os.listdir(outbox)[0]}/message.html", encoding = 'utf-8') as fp:
+        html = fp.read()
+
+    # assert
+    assert 'report render failed' in html
+    assert 'sorry, no json today' in html
+    assert os.listdir(f"{root}/alice@example.com/mail/archive") == [id]
+
+
+def test_process_missing_key_sends_fallback(tmp_path, monkeypatch):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # user make
+    user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
+
+    # template make
+    template_make(root, 'alice@example.com', '<p>{{ headline }}</p>')
+
+    # message make
+    message_make(root, 'alice@example.com')
+
+    # model make
+    model_make(monkeypatch)
+
+    # process
+    process(root, 'alice@example.com', 'daily')
+
+    # outbox
+    outbox = f"{root}/alice@example.com/mail/outbox"
+
+    # message file
+    with open(f"{outbox}/{os.listdir(outbox)[0]}/message.html", encoding = 'utf-8') as fp:
+        html = fp.read()
+
+    # assert
+    assert 'headline' in html
+    assert '&quot;title&quot;: &quot;stub report&quot;' in html
+
+
+def test_process_without_template_sends_json(tmp_path, monkeypatch):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # user make
+    user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
+
+    # message make
+    message_make(root, 'alice@example.com')
+
+    # model make
+    model_make(monkeypatch)
+
+    # process
+    process(root, 'alice@example.com', 'daily')
+
+    # outbox
+    outbox = f"{root}/alice@example.com/mail/outbox"
+
+    # message file
+    with open(f"{outbox}/{os.listdir(outbox)[0]}/message.html", encoding = 'utf-8') as fp:
+        assert fp.read() == fallback('{"title": "stub report"}')
+
+
+def test_process_passes_schema_to_generate(tmp_path, monkeypatch):
+
+    # root
+    root = f"{tmp_path}/emails"
+
+    # user make
+    user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
+
+    # schema make
+    schema_make(root, 'alice@example.com')
+
+    # template make
+    template_make(root, 'alice@example.com')
+
+    # message make
+    message_make(root, 'alice@example.com')
+
+    # message[s]
+    sent = []
+
+    # model make
+    def model_capture(messages):
+        sent.append(messages)
+        return '{"title": "ok"}'
+
+    # model patch
+    monkeypatch.setattr('task.model', model_capture)
+
+    # process
+    process(root, 'alice@example.com', 'daily')
+
+    # content
+    content = sent[0][1]['content']
+
+    # assert
+    assert '<schema>\n<file path="template.json">\n{"title": ""}\n</file>\n</schema>' in content
+    assert '{{ title }}' not in content

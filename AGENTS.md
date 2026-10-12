@@ -139,7 +139,7 @@ Sections split a file into named blocks. Every section is:
   | `src/receiver/main.py` | `var[s]` → `logging` → `controller` → `loop` |
   | `src/receiver/handler.py` | `handler` |
   | `src/worker/main.py` | `var[s]` → `logging` → `register` → `loop` |
-  | `src/worker/task.py` | `interval` → `get[s]` → `list` → `model` → `generate` → `process` |
+  | `src/worker/task.py` | `interval` → `get[s]` → `list` → `model` → `generate` → `render` → `process` |
   | `src/dispatcher/main.py` | `var[s]` → `logging` → `dir[s]` → `send` → `loop` |
   | `src/dispatcher/message.py` | `address` → `destination` → `content` |
   | `src/shared/util.py` | `env[s]` → `email[s]` → `log` |
@@ -211,7 +211,7 @@ def env_int(name, default):
   exception is the `Handler.__init__` two-liner, which has no blank line and no
   step comments.
 - Small helpers used by one section live in that section, above the function
-  that uses them (`text_cut` and `html_extract` sit in `#   generate`,
+  that uses them (`text_cut` and `json_extract` sit in `#   generate`,
   `get_text` heads `#   get[s]`).
 - Handle exceptions with `raise Exception('<lowercase message>')`. Messages are
   lowercase, unpunctuated, and use bracket context where useful:
@@ -351,7 +351,7 @@ import time
     `get_properties(root, user, section)`, `get_key`).
   - `list_*` — fetch many, return a list (`list_schedules`).
   - `emails` / `valid` — infer valid addresses from the data tree.
-  - `<noun>_<verb>` — a small transform (`text_cut`, `html_extract`); in tests,
+  - `<noun>_<verb>` — a small transform (`text_cut`, `json_extract`); in tests,
     a tree / stub builder (`user_make`, `message_make`, `model_make`).
   - `<service>_<command>` — a `bin/milton` command (`worker_process`).
 - The one class is the `receiver` `Handler`; its instances are lowercase.
@@ -453,22 +453,31 @@ Three services share one data tree under `/etc/milton`. Each is one directory un
   Each run is `task.process(root, user, schedule)`: it reads the shared prompt
   and the user's context, takes messages from `mail/inbox` in sorted order
   while they fit in `MILTON_WORKER_INPUT_LIMIT` less the context (at least one; the rest wait
-  for the next run), and calls `generate(prompt, context, messages, template)` once.
+  for the next run), and calls `generate(prompt, context, messages, schema)` once.
   The model sees tagged blocks — `<mail>` of
   `<message id from to date subject attachments>`, then `<context>`, then
-  `<template>` (every `.html` file under `prompt/` or `context/`, via
-  `get_template`; never cut), then `<prompt>` last, each file a
-  `<file path="prompt/…">` — and a system message telling the model to return
-  the template filled in, keeping its markup, and
-  naming each block's role and saying mail and context are data, not
-  instructions. `task.tag_guard` escapes any `</file`, `</message`, `</mail`,
-  `</context`, `</prompt` inside a block so its text cannot forge one.
-  `generate` cuts the mail and context (never the prompt) to
+  `<schema>` (the address `template.json`, via `get_schema`; never
+  cut), then `<prompt>` last (the address `prompt.md`, via `get_prompt`),
+  each file a `<file path="…">` — and a system message telling the
+  model to reply with one json object, the schema filled in with every key and
+  value type kept, naming each block's role and saying mail and context are
+  data, not instructions. `task.tag_guard` escapes any `</file`, `</message`,
+  `</mail`, `</context`, `</schema`, `</prompt` inside a block so its text
+  cannot forge one.
+  `generate` cuts the mail and context (never the schema or prompt) to
   `MILTON_WORKER_INPUT_LIMIT` characters and asks the configured
   chat-completions model (`task.model`, openai client against openrouter by
-  default, reply capped at `MILTON_WORKER_MAX_TOKENS`) for the html body —
+  default, reply capped at `MILTON_WORKER_MAX_TOKENS`) for the json, which
+  `json_extract` frees from fences and prose. `render(template, reply)` then
+  fills the jinja2 template — the address `template.html`, raw, via
+  `get_template`; never sent to the model — with autoescape and
+  `StrictUndefined`, so a missing key fails. When the json or the render
+  fails, the error is logged and `fallback(reply, error)` is sent instead: the
+  error, then the reply (pretty-printed when it parses) in a `<pre>`; an
+  address with no template always gets `fallback(reply)`. `process`
   writes a single `mail/outbox/<uuid7>/message.html` + `properties.json`
-  (from/to/subject/cc/bcc from the address `properties.json` `mail` section), and
+  (from/to/subject/cc/bcc from the address `properties.json` `mail` section)
+  + `report.json` (the raw reply), and
   archives the batch. `task.process(root, user, schedule, preserve_inbox =
   True)` leaves the batch in `mail/inbox` — what `bin/milton worker process
   [address] --preserve-inbox` (and `make process`) uses to preview a report
@@ -501,7 +510,9 @@ by compose:
 /etc/milton/emails/<email>/properties.json  address properties (mail, schedules sections)
 /etc/milton/emails/<email>/mail             inbox / outbox / sent / archive
 /etc/milton/emails/<email>/context          read-only context files
-/etc/milton/emails/<email>/prompt           prompt text — every file, shared by all schedules
+/etc/milton/emails/<email>/prompt.md        prompt text, shared by all schedules
+/etc/milton/emails/<email>/template.json    reply schema the model fills in
+/etc/milton/emails/<email>/template.html    jinja2 email template the reply is rendered with
 ```
 
 `properties.json` at the address root holds the address settings, one section
@@ -518,8 +529,11 @@ interval tokens (`5m`, `30m`, `1h`, `daily`, `weekly`, via `task.interval` and
 `weekdays 08:30 17:00`, `mon,fri 09:00`, via `task.timing` and `jobs.weekly`),
 the times in the `TZ` zone (`UTC` by default); `register` logs and
 skips an entry `timing` refuses. All schedules share one
-prompt: `prompt/` is read like `context/` — every file under it, sorted, each
-wrapped in a `<file path="prompt/…">` block, is the prompt.
+prompt: `prompt.md` beside `properties.json`, wrapped in a
+`<file path="prompt.md">` block, and one template pair beside it:
+`template.json` (the `<schema>` the model fills in) and `template.html` (the
+jinja2 template the reply is rendered with; optional). Every file under
+`context/`, whatever its type, is context.
 
 Environment variables carry a **project prefix**:
 
@@ -580,7 +594,8 @@ Targets are one lowercase word and alphabetical inside `#\ttarget[s]`:
 - `process` previews a report for `MILTON_CLI_WORKER_ADDRESS` (every address
   when empty) without consuming the inbox;
 - `seed ADDR=you@example.com` creates a new address folder with `mail/`,
-  `context/`, a `prompt/prompt.md` and a `properties.json` scheduled `daily`;
+  `context/`, a `prompt.md`, a `template.json` schema and a
+  `properties.json` scheduled `daily`;
 - `test [component ...]` runs one test folder (all of `test/` by default);
 - `upgrade` pulls and rebuilds the stack; `version <x.y.z>` writes `VERSION`,
   commits and tags `v<x.y.z>` on a clean tree.

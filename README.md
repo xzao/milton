@@ -10,7 +10,7 @@ and mails the resulting reports.
 - `receiver` — smtp listener; writes accepted mail into the owner's `mail/inbox`.
 - `worker` — runs each schedule in the address `properties.json` `schedules`
   list; each run asks the configured model to turn all mail in the inbox into
-  an html report with the shared `prompt/` text, then archives it.
+  json with the shared `prompt.md`, renders it into an html report, then archives it.
 - `dispatcher` — validates each finished report and sends it with amazon ses.
 
 #
@@ -25,7 +25,9 @@ mounted by compose):
 /etc/milton/emails/<email>/properties.json  address properties (mail, schedules sections)
 /etc/milton/emails/<email>/mail             mail spool (inbox/outbox/sent/archive)
 /etc/milton/emails/<email>/context          read-only context for the prompts
-/etc/milton/emails/<email>/prompt           prompt text (every file, shared by all schedules)
+/etc/milton/emails/<email>/prompt.md        prompt text (shared by all schedules)
+/etc/milton/emails/<email>/template.json    reply schema the model fills in
+/etc/milton/emails/<email>/template.html    jinja2 email template (optional)
 ```
 
 an `<email>` is valid when its `mail/` folder exists.
@@ -68,9 +70,9 @@ with an unknown day or time is logged and skipped.
 }
 ```
 
-every schedule shares one prompt: the text of every file under `prompt/`, read
-in sorted order and each labelled with its path, the same way `context/` is
-read.
+every schedule shares one prompt: `prompt.md` at the address root, next to
+`properties.json`, and one template pair beside it: `template.json` (the reply
+schema) and `template.html` (the email template).
 
 every schedule also shares one inbox, so when an address lists several, the
 first to run reports on the mail and archives it — the others find it empty.
@@ -111,22 +113,31 @@ the services run as `MILTON_UID` / `MILTON_GID` (default `1000`) inside the
 containers, so files written into `mnt/` stay owned by you — set them to the
 output of `id -u` and `id -g` when that is not `1000`.
 
-the worker writes the report html with an openai-compatible chat completions
-api, openrouter by default. set `MILTON_WORKER_API_KEY`, and optionally
-`MILTON_WORKER_API_URL` and `MILTON_WORKER_MODEL` (`openrouter/free` by
-default). the prompts should ask for an html fragment — the reply becomes the
-message body. the model gets each mail as a `<message>` block with its headers,
-each `context/` and `prompt/` file as a `<file path="…">` block, and the prompt
-last. every `.html` file under `prompt/` or `context/` (e.g.
-`context/template.html`) goes in a separate `<template>` block: the model is
-told to reply with that template filled in — markup, styles and section order
-kept, only its `{{tokens}}` replaced and its blocks repeated or removed as the
-prompt says. the other `context/` files are reference. html-only mail is
-converted to text. each run takes as much mail as fits in
+the worker asks an openai-compatible chat completions api (openrouter by
+default) for the report data as one json object, then renders the email html
+itself. set `MILTON_WORKER_API_KEY`, and optionally `MILTON_WORKER_API_URL` and
+`MILTON_WORKER_MODEL` (`openrouter/free` by default). the model gets each mail
+as a `<message>` block with its headers, each `context/` file as a
+`<file path="…">` block, the address `template.json` as the `<schema>` — the
+json skeleton it must fill in,
+every key and value type kept, lists grown to fit — and the prompt last.
+
+the address `template.html` is a
+[jinja2](https://jinja.palletsprojects.com/) template rendered with that
+json: `{{ headline }}`, `{% for item in items %}…{% endfor %}`,
+`{% if … %}`. values are html-escaped, and a key the json lacks is an error.
+the template is never sent to the model. when the reply is not json or the
+render fails, the error is logged and the report is still sent: the error, then
+the reply pretty-printed in a `<pre>` block, so nothing is lost. an address with
+no template always gets that json layout. the raw reply is kept beside the
+report as `mail/outbox/<id>/report.json`.
+
+html-only mail is converted to text. each run takes as much mail as fits in
 `MILTON_WORKER_INPUT_LIMIT` characters (`12000` by default) after the context,
-and leaves the rest in the inbox for the next run (the template and the prompt
-are never cut), and the reply is capped at `MILTON_WORKER_MAX_TOKENS` tokens (`2000` by default), so raise both
-when the prompt, the context and the html template are large.
+and leaves the rest in the inbox for the next run (the schema and the prompt
+are never cut), and the reply is capped at `MILTON_WORKER_MAX_TOKENS` tokens
+(`2000` by default), so raise both when the prompt, the context and the json
+are large.
 
 the dispatcher sends reports with amazon ses. each address's `mail` `from` (the
 address itself when unset) must be a verified identity in ses, and the region comes from
