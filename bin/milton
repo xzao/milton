@@ -29,7 +29,7 @@ from task import process
 #
 #   var[s]
 #
-EMAILS = '/etc/milton/emails'
+EMAILS = '/etc/milton/staples'
 LABEL  = 'preview'
 
 

@@ -14,7 +14,7 @@ import zoneinfo
 #
 #   var[s]
 #
-EMAILS = '/etc/milton/emails'
+EMAILS = '/etc/milton/staples'
 RELOAD = util.env_int('MILTON_WORKER_RELOAD', 300)
 TICK   = util.env_int('MILTON_WORKER_INTERVAL', 1)
 ZONE   = zoneinfo.ZoneInfo(util.env('TZ', 'UTC'))

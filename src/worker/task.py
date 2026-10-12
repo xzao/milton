@@ -195,7 +195,7 @@ def get_prompt(root, user):
 def get_context(root, user):
 
     # return
-    return get_text(root, user, 'context')
+    return get_text(root, user, 'repo')
 
 
 def get_schema(root, user):

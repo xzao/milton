@@ -11,7 +11,7 @@ import time
 #
 #   var[s]
 #
-EMAILS = '/etc/milton/emails'
+EMAILS = '/etc/milton/staples'
 PORT   = util.env_int('MILTON_RECEIVER_SMTP_PORT', 2525)
 
 

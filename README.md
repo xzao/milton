@@ -22,11 +22,12 @@ committed — gitignored and dockerignored, linked in the devcontainer and
 mounted by compose):
 
 ```
-/etc/milton/emails/<email>/template.json    address settings (mail headers, schedules, data)
-/etc/milton/emails/<email>/mail             mail spool (inbox/outbox/sent/archive)
-/etc/milton/emails/<email>/context          read-only context for the prompts
-/etc/milton/emails/<email>/prompt.md        prompt text (shared by all schedules)
-/etc/milton/emails/<email>/template.html    jinja2 email template (optional)
+/etc/milton/staples/<email>/template.json    address settings (mail headers, schedules, data)
+/etc/milton/staples/<email>/repo             reference files, sent to the model as context
+/etc/milton/staples/<email>/html             scraped html (not read yet)
+/etc/milton/staples/<email>/mail             mail spool (inbox/outbox/sent/archive)
+/etc/milton/staples/<email>/prompt.md        prompt text (shared by all schedules)
+/etc/milton/staples/<email>/template.html    jinja2 email template (optional)
 /etc/milton/skel                            files every new address starts with
 ```
 
@@ -101,9 +102,11 @@ make logs                          follow service logs
 bin/milton worker process [address] [--preserve-inbox]   process on demand
 ```
 
-`make init <email>` creates `/etc/milton/emails/<email>/` with `mail/`,
-`context/` and a copy of every file in `/etc/milton/skel` — a `prompt.md`,
-`template.json` and `template.html` to edit. `from` and `to` can stay empty in
+`make init <email>` creates `/etc/milton/staples/<email>/` with
+its folders (`repo/`, `html/`, and `mail/` with its `inbox`, `outbox`, `sent`
+and `archive`) and a copy of every file in
+`/etc/milton/skel` — a `prompt.md`, `template.json` and `template.html` to
+edit. `from` and `to` can stay empty in
 the skel's `template.json`: they default to the address. it refuses an address
 that already exists.
 
@@ -135,7 +138,7 @@ the worker asks an openai-compatible chat completions api (openrouter by
 default) for the report data as one json object, then renders the email html
 itself. set `MILTON_WORKER_API_KEY`, and optionally `MILTON_WORKER_API_URL` and
 `MILTON_WORKER_MODEL` (`openrouter/free` by default). the model gets each mail
-as a `<message>` block with its headers, each `context/` file as a
+as a `<message>` block with its headers, each `repo/` file as a
 `<file path="…">` block, the `data` of the address `template.json` as the
 `<schema>` — the json skeleton it must fill in,
 every key and value type kept, lists grown to fit — and the prompt last.

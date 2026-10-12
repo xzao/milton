@@ -239,7 +239,7 @@ blocks**; a lone statement keeps a single space.
 1. **Assignments** — pad the left-hand sides so the `=` line up:
 
 ```python
-EMAILS     = '/etc/milton/emails'
+EMAILS     = '/etc/milton/staples'
 INTERVAL   = util.env_int('MILTON_DISPATCHER_INTERVAL', 60)
 SES_REGION = util.env('MILTON_DISPATCHER_SES_REGION')
 ```
@@ -332,7 +332,7 @@ import zoneinfo
 #
 
 - **Defaults to single quotes** for paths, env names and plain strings:
-  `'/etc/milton/emails'`, `'MILTON_WORKER_INTERVAL'`, `'0.0.0.0'`.
+  `'/etc/milton/staples'`, `'MILTON_WORKER_INTERVAL'`, `'0.0.0.0'`.
 - **Double quotes only for wire-format / JSON payloads**: `"to"`, `"subject"`,
   `"role": "system"`, `"ToAddresses"`. Keep that split.
 - f-strings for every interpolation: `f"{EMAILS}/{user}/mail/inbox"`. No `%` or
@@ -456,7 +456,7 @@ under `src/` with a `main.py` and a `requirements.txt`, wired in
     `scheduler.exec_jobs()`. All schedules of an address share one inbox, so
     the first to run takes the mail; `register` warns when there is more than
     one.
-  - `task.process(root, user, schedule)` reads `prompt.md`, `context/`,
+  - `task.process(root, user, schedule)` reads `prompt.md`, `repo/`,
     `template.json` and `template.html` (see `#   config`), then takes
     messages from `mail/inbox` in sorted order while they fit in
     `MILTON_WORKER_INPUT_LIMIT` less the context — at least one; the rest wait
@@ -514,11 +514,12 @@ linked to `/etc/milton` in the devcontainer and bind-mounted at `/etc/milton`
 by compose:
 
 ```
-/etc/milton/emails/<email>/template.json    address settings: mail headers, schedules, data
-/etc/milton/emails/<email>/prompt.md        prompt text, shared by all schedules
-/etc/milton/emails/<email>/template.html    jinja2 email template (optional)
-/etc/milton/emails/<email>/context/         reference files, every file sent
-/etc/milton/emails/<email>/mail/            inbox / outbox / sent / archive
+/etc/milton/staples/<email>/template.json    address settings: mail headers, schedules, data
+/etc/milton/staples/<email>/prompt.md        prompt text, shared by all schedules
+/etc/milton/staples/<email>/template.html    jinja2 email template (optional)
+/etc/milton/staples/<email>/repo/            reference files, every file sent as `<context>`
+/etc/milton/staples/<email>/html/            scraped html — nothing reads it yet
+/etc/milton/staples/<email>/mail/            received mail and reports: inbox / outbox / sent / archive
 /etc/milton/skel/                           new address files (from the repo `etc/milton/skel/`), copied by `make init`
 ```
 
@@ -602,10 +603,11 @@ them from `$(MAKECMDGOALS)`:
   (`receiver`, `worker`, `dispatcher` — all three by default);
 - `flush [address ...]` lists the reports in `mail/outbox` (every address by
   default) and deletes them only after a `y` confirm;
-- `init <email>` creates a new address folder — `mail/`, `context/` and a
-  copy of everything in `/etc/milton/skel` (`prompt.md`, `template.json`,
-  `template.html`), owned by `MILTON_UID` / `MILTON_GID`; it refuses an
-  argument without `@`, an existing address and a missing skel;
+- `init <email>` creates a new address folder — `repo/`,
+  `html/`, `mail/` with its `inbox`, `outbox`, `sent` and
+  `archive`, and a copy of everything in `/etc/milton/skel` (`prompt.md`,
+  `template.json`, `template.html`), owned by `MILTON_UID` / `MILTON_GID`; it
+  refuses an argument without `@`, an existing address and a missing skel;
 - `install` (run by the devcontainer) links `/etc/milton` to `mnt/etc/milton`,
   copies the repo `etc/milton/skel/` into `/etc/milton/skel` without
   overwriting files already there (`cp --update=none`, so local edits
@@ -708,7 +710,7 @@ import time
 #
 #   var[s]
 #
-EMAILS = '/etc/milton/emails'
+EMAILS = '/etc/milton/staples'
 
 
 #

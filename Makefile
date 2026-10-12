@@ -27,10 +27,10 @@ develop:
 
 flush:
 	@addresses="$(filter-out $@,$(MAKECMDGOALS))"; \
-	[ -n "$$addresses" ] || addresses="$$(ls mnt/etc/milton/emails 2>/dev/null)"; \
+	[ -n "$$addresses" ] || addresses="$$(ls mnt/etc/milton/staples 2>/dev/null)"; \
 	outboxes=""; \
 	for address in $$addresses; do \
-		outboxes="$$outboxes mnt/etc/milton/emails/$$address/mail/outbox"; \
+		outboxes="$$outboxes mnt/etc/milton/staples/$$address/mail/outbox"; \
 	done; \
 	reports="$$(find $$outboxes -mindepth 1 -maxdepth 1 2>/dev/null)"; \
 	if [ -z "$$reports" ]; then \
@@ -50,7 +50,7 @@ flush:
 init:
 	@address="$(filter-out $@,$(MAKECMDGOALS))"; \
 	skel="/etc/milton/skel"; \
-	folder="mnt/etc/milton/emails/$$address"; \
+	folder="mnt/etc/milton/staples/$$address"; \
 	case "$$address" in \
 		*@*) ;; \
 		*) echo "usage: make init <email>"; exit 1 ;; \
@@ -63,7 +63,10 @@ init:
 		echo "address exists '$$folder'"; \
 		exit 1; \
 	fi; \
-	mkdir -p "$$folder/mail" "$$folder/context"; \
+	mkdir -p "$$folder/repo" "$$folder/html"; \
+	for sub in inbox outbox sent archive; do \
+		mkdir -p "$$folder/mail/$$sub"; \
+	done; \
 	cp -r "$$skel/." "$$folder/"; \
 	sudo chown -R $(or $(MILTON_UID),1000):$(or $(MILTON_GID),1000) "$$folder"; \
 	echo "address created '$$folder'"

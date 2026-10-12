@@ -21,7 +21,7 @@ def user_make(root, user, schedule = None, prompt = None):
         os.makedirs(f"{root}/{user}/mail/{sub}", exist_ok = True)
 
     # context make
-    os.makedirs(f"{root}/{user}/context", exist_ok = True)
+    os.makedirs(f"{root}/{user}/repo", exist_ok = True)
 
     # prompt make
     if schedule != None:
@@ -227,7 +227,7 @@ def test_timing_invalid_time_raises():
 def test_list_schedules_reads_order(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com')
@@ -242,7 +242,7 @@ def test_list_schedules_reads_order(tmp_path):
 def test_list_schedules_ignores_other_sections(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'prompt text')
@@ -257,7 +257,7 @@ def test_list_schedules_ignores_other_sections(tmp_path):
 def test_list_schedules_empty_without_schedules(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com')
@@ -269,7 +269,7 @@ def test_list_schedules_empty_without_schedules(tmp_path):
 def test_get_prompt_reads_text(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com')
@@ -284,7 +284,7 @@ def test_get_prompt_reads_text(tmp_path):
 def test_get_prompt_guards_tags(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com')
@@ -299,7 +299,7 @@ def test_get_prompt_guards_tags(tmp_path):
 def test_get_prompt_missing_raises(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com')
@@ -312,43 +312,43 @@ def test_get_prompt_missing_raises(tmp_path):
 def test_get_context_concatenates_sorted(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com')
 
     # file make
     for name in ['b.md', 'a.md']:
-        with open(f"{root}/alice@example.com/context/{name}", 'w') as fp:
+        with open(f"{root}/alice@example.com/repo/{name}", 'w') as fp:
             fp.write(name[0])
 
     # assert
-    assert get_context(root, 'alice@example.com') == '<file path="context/a.md">\na\n</file>\n<file path="context/b.md">\nb\n</file>\n'
+    assert get_context(root, 'alice@example.com') == '<file path="repo/a.md">\na\n</file>\n<file path="repo/b.md">\nb\n</file>\n'
 
 
 def test_get_context_walks_nested_dirs(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com')
 
     # dir make
-    os.makedirs(f"{root}/alice@example.com/context/team", exist_ok = True)
+    os.makedirs(f"{root}/alice@example.com/repo/team", exist_ok = True)
 
     # file make
-    with open(f"{root}/alice@example.com/context/team/roster.md", 'w') as fp:
+    with open(f"{root}/alice@example.com/repo/team/roster.md", 'w') as fp:
         fp.write('roster')
 
     # assert
-    assert get_context(root, 'alice@example.com') == '<file path="context/team/roster.md">\nroster\n</file>\n'
+    assert get_context(root, 'alice@example.com') == '<file path="repo/team/roster.md">\nroster\n</file>\n'
 
 
 def test_get_context_empty_without_dir(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # mail make
     os.makedirs(f"{root}/alice@example.com/mail", exist_ok = True)
@@ -357,10 +357,34 @@ def test_get_context_empty_without_dir(tmp_path):
     assert get_context(root, 'alice@example.com') == ''
 
 
+def test_get_context_ignores_mail_and_html(tmp_path):
+
+    # root
+    root = f"{tmp_path}/staples"
+
+    # user make
+    user_make(root, 'alice@example.com')
+
+    # message make
+    message_make(root, 'alice@example.com')
+
+    # html make
+    os.makedirs(f"{root}/alice@example.com/html", exist_ok = True)
+    with open(f"{root}/alice@example.com/html/page.html", 'w') as fp:
+        fp.write('<p>scraped</p>')
+
+    # file make
+    with open(f"{root}/alice@example.com/repo/notes.md", 'w') as fp:
+        fp.write('notes')
+
+    # assert
+    assert get_context(root, 'alice@example.com') == '<file path="repo/notes.md">\nnotes\n</file>\n'
+
+
 def test_get_message_reads_headers(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com')
@@ -391,7 +415,7 @@ def test_get_message_reads_headers(tmp_path):
 def test_get_message_escapes_attributes(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com')
@@ -409,7 +433,7 @@ def test_get_message_escapes_attributes(tmp_path):
 def test_get_message_guards_tags(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com')
@@ -430,7 +454,7 @@ def test_get_message_guards_tags(tmp_path):
 def test_get_template_reads_root_html(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com')
@@ -439,18 +463,18 @@ def test_get_template_reads_root_html(tmp_path):
     template_make(root, 'alice@example.com', '<p>{{ a }}</p>')
 
     # context make
-    with open(f"{root}/alice@example.com/context/notes.html", 'w') as fp:
+    with open(f"{root}/alice@example.com/repo/notes.html", 'w') as fp:
         fp.write('<p>notes</p>')
 
     # assert
     assert get_template(root, 'alice@example.com') == '<p>{{ a }}</p>'
-    assert get_context(root, 'alice@example.com') == '<file path="context/notes.html">\n<p>notes</p>\n</file>\n'
+    assert get_context(root, 'alice@example.com') == '<file path="repo/notes.html">\n<p>notes</p>\n</file>\n'
 
 
 def test_get_template_empty_without_file(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com')
@@ -490,7 +514,7 @@ def test_generate_keeps_schema_uncut(monkeypatch):
 def test_get_properties_reads_template_json(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # properties
     properties = {
@@ -515,7 +539,7 @@ def test_get_properties_reads_template_json(tmp_path):
 def test_get_properties_empty_without_file(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com')
@@ -650,7 +674,7 @@ def test_generate_cuts_content_to_input_limit(monkeypatch):
 def test_process_writes_report_and_archives_inbox(tmp_path, monkeypatch):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
@@ -700,7 +724,7 @@ def test_process_writes_report_and_archives_inbox(tmp_path, monkeypatch):
 def test_process_writes_message_json_from_template_json(tmp_path, monkeypatch):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # properties
     properties = {
@@ -750,7 +774,7 @@ def test_process_writes_message_json_from_template_json(tmp_path, monkeypatch):
 def test_process_archives_all_mail(tmp_path, monkeypatch):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
@@ -781,13 +805,13 @@ def test_process_archives_all_mail(tmp_path, monkeypatch):
 def test_process_passes_all_mail_to_generate(tmp_path, monkeypatch):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
 
     # context make
-    with open(f"{root}/alice@example.com/context/profile.md", 'w') as fp:
+    with open(f"{root}/alice@example.com/repo/profile.md", 'w') as fp:
         fp.write('alice')
 
     # body[s]
@@ -818,7 +842,7 @@ def test_process_passes_all_mail_to_generate(tmp_path, monkeypatch):
     # assert
     assert len(calls) == 1
     assert calls[0]['prompt'] == '<file path="prompt.md">\nsummarise the new mail.\n</file>\n'
-    assert calls[0]['context'] == '<file path="context/profile.md">\nalice\n</file>\n'
+    assert calls[0]['context'] == '<file path="repo/profile.md">\nalice\n</file>\n'
     assert len(calls[0]['bodies']) == 3
 
     # body iterate
@@ -835,7 +859,7 @@ def test_process_passes_all_mail_to_generate(tmp_path, monkeypatch):
 def test_process_report_id_is_uuid7(tmp_path, monkeypatch):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
@@ -861,7 +885,7 @@ def test_process_report_id_is_uuid7(tmp_path, monkeypatch):
 def test_process_empty_inbox_writes_nothing(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
@@ -876,7 +900,7 @@ def test_process_empty_inbox_writes_nothing(tmp_path):
 def test_process_ignores_inbox_files(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
@@ -895,7 +919,7 @@ def test_process_ignores_inbox_files(tmp_path):
 def test_process_skips_message_without_eml(tmp_path, monkeypatch):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
@@ -932,7 +956,7 @@ def test_process_skips_message_without_eml(tmp_path, monkeypatch):
 def test_process_missing_prompt_raises(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com')
@@ -948,7 +972,7 @@ def test_process_missing_prompt_raises(tmp_path):
 def test_process_preserve_inbox_leaves_mail(tmp_path, monkeypatch):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
@@ -985,7 +1009,7 @@ def test_process_preserve_inbox_leaves_mail(tmp_path, monkeypatch):
 def test_process_preserve_inbox_multiples(tmp_path, monkeypatch):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
@@ -1016,7 +1040,7 @@ def test_process_preserve_inbox_multiples(tmp_path, monkeypatch):
 def test_process_defers_mail_over_input_limit(tmp_path, monkeypatch):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
@@ -1046,7 +1070,7 @@ def test_process_defers_mail_over_input_limit(tmp_path, monkeypatch):
 def test_get_schema_reads_data_only(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
@@ -1058,18 +1082,18 @@ def test_get_schema_reads_data_only(tmp_path):
     schema_make(root, 'alice@example.com', {'title': ''})
 
     # context make
-    with open(f"{root}/alice@example.com/context/package.json", 'w') as fp:
+    with open(f"{root}/alice@example.com/repo/package.json", 'w') as fp:
         fp.write('{"name": "app"}')
 
     # assert
     assert get_schema(root, 'alice@example.com') == '{\n    "title": ""\n}\n'
-    assert get_context(root, 'alice@example.com') == '<file path="context/package.json">\n{"name": "app"}\n</file>\n'
+    assert get_context(root, 'alice@example.com') == '<file path="repo/package.json">\n{"name": "app"}\n</file>\n'
 
 
 def test_get_schema_empty_without_file(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com')
@@ -1147,7 +1171,7 @@ def test_fallback_keeps_raw_text_and_error():
 def test_process_bad_json_sends_fallback(tmp_path, monkeypatch):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
@@ -1185,7 +1209,7 @@ def test_process_bad_json_sends_fallback(tmp_path, monkeypatch):
 def test_process_missing_key_sends_fallback(tmp_path, monkeypatch):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
@@ -1217,7 +1241,7 @@ def test_process_missing_key_sends_fallback(tmp_path, monkeypatch):
 def test_process_without_template_sends_json(tmp_path, monkeypatch):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
@@ -1242,7 +1266,7 @@ def test_process_without_template_sends_json(tmp_path, monkeypatch):
 def test_process_passes_schema_to_generate(tmp_path, monkeypatch):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')

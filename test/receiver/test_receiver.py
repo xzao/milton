@@ -15,7 +15,7 @@ import pytest
 def test_rcpt_accepts_valid_address(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # address make
     os.makedirs(f"{root}/alice@example.com/mail", exist_ok = True)
@@ -38,7 +38,7 @@ def test_rcpt_accepts_valid_address(tmp_path):
 def test_rcpt_rejects_unknown_address(tmp_path, caplog):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # envelope
     envelope = Envelope()
@@ -59,7 +59,7 @@ def test_rcpt_rejects_unknown_address(tmp_path, caplog):
 def test_data_writes_message_and_attachment(tmp_path):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # address make
     os.makedirs(f"{root}/alice@example.com/mail", exist_ok = True)
@@ -105,7 +105,7 @@ def test_data_writes_message_and_attachment(tmp_path):
 def test_data_save_failure_logs_and_raises(tmp_path, caplog):
 
     # root
-    root = f"{tmp_path}/emails"
+    root = f"{tmp_path}/staples"
 
     # address make
     os.makedirs(f"{root}/alice@example.com/mail", exist_ok = True)

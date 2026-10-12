@@ -13,7 +13,7 @@ import time
 #
 #   var[s]
 #
-EMAILS     = '/etc/milton/emails'
+EMAILS     = '/etc/milton/staples'
 INTERVAL   = util.env_int('MILTON_DISPATCHER_INTERVAL', 60)
 SES_REGION = util.env('MILTON_DISPATCHER_SES_REGION')
 
