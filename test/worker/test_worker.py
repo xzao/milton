@@ -54,6 +54,23 @@ def message_make(root, user, body = 'hello body', subject = 'test'):
     # return
     return id
 
+def site_make(root, user, text = '<p>scraped</p>'):
+
+    # id
+    id = uuid7.new()
+
+    # folder make
+    folder = f"{root}/{user}/site/inbox/{id}"
+    os.makedirs(folder, exist_ok = True)
+
+    # page make
+    with open(f"{folder}/page.html", 'w') as fp:
+        fp.write(text)
+
+    # return
+    return id
+
+
 def properties_make(root, user, properties):
 
     # path
@@ -357,7 +374,7 @@ def test_get_context_empty_without_dir(tmp_path):
     assert get_context(root, 'alice@example.com') == ''
 
 
-def test_get_context_ignores_mail_and_html(tmp_path):
+def test_get_context_ignores_mail_and_site(tmp_path):
 
     # root
     root = f"{tmp_path}/staples"
@@ -368,10 +385,8 @@ def test_get_context_ignores_mail_and_html(tmp_path):
     # message make
     message_make(root, 'alice@example.com')
 
-    # html make
-    os.makedirs(f"{root}/alice@example.com/html", exist_ok = True)
-    with open(f"{root}/alice@example.com/html/page.html", 'w') as fp:
-        fp.write('<p>scraped</p>')
+    # site make
+    site_make(root, 'alice@example.com')
 
     # file make
     with open(f"{root}/alice@example.com/repo/notes.md", 'w') as fp:
@@ -825,7 +840,7 @@ def test_process_passes_all_mail_to_generate(tmp_path, monkeypatch):
     calls = []
 
     # generate make
-    def generate_stub(prompt, context, mail, schema):
+    def generate_stub(prompt, context, mail, schema, pages = []):
         calls.append({
             'prompt'  : prompt,
             'context' : context,
@@ -882,13 +897,111 @@ def test_process_report_id_is_uuid7(tmp_path, monkeypatch):
     assert id.split('-')[3][0] in '89ab'
 
 
-def test_process_empty_inbox_writes_nothing(tmp_path):
+def test_process_empty_inbox_writes_report(tmp_path, monkeypatch):
 
     # root
     root = f"{tmp_path}/staples"
 
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
+
+    # model fail
+    def model_fail(messages):
+        raise Exception('model called')
+
+    # model stub
+    monkeypatch.setattr('task.model', model_fail)
+
+    # process
+    process(root, 'alice@example.com', 'daily')
+
+    # report[s]
+    reports = os.listdir(f"{root}/alice@example.com/mail/outbox")
+
+    # report count
+    assert len(reports) == 1
+
+    # html read
+    with open(f"{root}/alice@example.com/mail/outbox/{reports[0]}/message.html") as fp:
+        html = fp.read()
+
+    # assert
+    assert 'nothing to report' in html
+
+
+def test_process_site_reaches_model_and_archives(tmp_path, monkeypatch):
+
+    # root
+    root = f"{tmp_path}/staples"
+
+    # user make
+    user_make(root, 'alice@example.com', 'daily', 'summarise the new pages.')
+
+    # site make
+    id = site_make(root, 'alice@example.com', '<p>scraped news</p>')
+
+    # call[s]
+    calls = []
+
+    # model capture
+    def model_capture(messages):
+        calls.append(messages)
+        return '{"title": "site report"}'
+
+    # model patch
+    monkeypatch.setattr('task.model', model_capture)
+
+    # process
+    process(root, 'alice@example.com', 'daily')
+
+    # content
+    content = calls[0][1]['content']
+
+    # site check
+    assert '<site count="1">' in content
+    assert f"<file path=\"site/inbox/{id}/page.html\">" in content
+    assert 'scraped news' in content
+
+    # archive move
+    assert os.listdir(f"{root}/alice@example.com/site/inbox") == []
+    assert os.listdir(f"{root}/alice@example.com/site/archive") == [id]
+
+    # report count
+    assert len(os.listdir(f"{root}/alice@example.com/mail/outbox")) == 1
+
+
+def test_process_preserve_inbox_keeps_site(tmp_path, monkeypatch):
+
+    # root
+    root = f"{tmp_path}/staples"
+
+    # user make
+    user_make(root, 'alice@example.com', 'daily', 'summarise the new pages.')
+
+    # site make
+    id = site_make(root, 'alice@example.com')
+
+    # model make
+    model_make(monkeypatch)
+
+    # process
+    process(root, 'alice@example.com', 'preview', preserve_inbox = True)
+
+    # assert
+    assert os.listdir(f"{root}/alice@example.com/site/inbox") == [id]
+    assert len(os.listdir(f"{root}/alice@example.com/mail/outbox")) == 1
+
+
+def test_process_empty_inbox_suppressed_writes_nothing(tmp_path, monkeypatch):
+
+    # root
+    root = f"{tmp_path}/staples"
+
+    # user make
+    user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
+
+    # env set
+    monkeypatch.setenv('MILTON_WORKER_SUPPRESS_EMPTY', '1')
 
     # process
     process(root, 'alice@example.com', 'daily')
@@ -897,7 +1010,7 @@ def test_process_empty_inbox_writes_nothing(tmp_path):
     assert os.listdir(f"{root}/alice@example.com/mail/outbox") == []
 
 
-def test_process_ignores_inbox_files(tmp_path):
+def test_process_ignores_inbox_files(tmp_path, monkeypatch):
 
     # root
     root = f"{tmp_path}/staples"
@@ -908,6 +1021,9 @@ def test_process_ignores_inbox_files(tmp_path):
     # file make
     with open(f"{root}/alice@example.com/mail/inbox/notes.txt", 'w') as fp:
         fp.write('not a message')
+
+    # env set
+    monkeypatch.setenv('MILTON_WORKER_SUPPRESS_EMPTY', '1')
 
     # process
     process(root, 'alice@example.com', 'daily')

@@ -9,8 +9,9 @@ and mails the resulting reports.
 
 - `receiver` — smtp listener; writes accepted mail into the owner's `mail/inbox`.
 - `worker` — runs each schedule in the address `template.json` `schedules`
-  list; each run asks the configured model to turn all mail in the inbox into
-  json with the shared `prompt.md`, renders it into an html report, then archives it.
+  list; each run asks the configured model to turn the new mail and scraped
+  site pages into json with the shared `prompt.md`, renders it into an html
+  report, then archives them.
 - `dispatcher` — validates each finished report and sends it with amazon ses.
 
 #
@@ -24,7 +25,7 @@ mounted by compose):
 ```
 /etc/milton/staples/<email>/template.json    address settings (mail headers, schedules, data)
 /etc/milton/staples/<email>/repo             reference files, sent to the model as context
-/etc/milton/staples/<email>/html             scraped html (not read yet)
+/etc/milton/staples/<email>/site             scraped pages, one folder each (inbox/archive)
 /etc/milton/staples/<email>/mail             mail spool (inbox/outbox/sent/archive)
 /etc/milton/staples/<email>/prompt.md        prompt text (shared by all schedules)
 /etc/milton/staples/<email>/template.html    jinja2 email template (optional)
@@ -83,6 +84,11 @@ every schedule shares one prompt, `prompt.md`, and one email template,
 
 every schedule also shares one inbox, so when an address lists several, the
 first to run reports on the mail and archives it — the others find it empty.
+scraped pages go in `site/inbox/<id>/` (any files in the folder) and are
+reported and archived to `site/archive` just like mail. when there is no new
+mail and no new page, the model is not called and a schedule still sends a
+short "nothing to report" email; set `MILTON_WORKER_SUPPRESS_EMPTY=1` to skip
+those runs instead.
 list one schedule per address unless that is what you want; the worker warns
 when it sees more than one. the worker re-reads addresses and `schedules` every
 `MILTON_WORKER_RELOAD` seconds (`300` by default), so new addresses and
@@ -103,8 +109,8 @@ bin/milton worker process [address] [--preserve-inbox]   process on demand
 ```
 
 `make init <email>` creates `/etc/milton/staples/<email>/` with
-its folders (`repo/`, `html/`, and `mail/` with its `inbox`, `outbox`, `sent`
-and `archive`) and a copy of every file in
+its folders (`repo/`, `mail/` with its `inbox`, `outbox`, `sent` and
+`archive`, and `site/` with its `inbox` and `archive`) and a copy of every file in
 `/etc/milton/skel` — a `prompt.md`, `template.json` and `template.html` to
 edit. `from` and `to` can stay empty in
 the skel's `template.json`: they default to the address. it refuses an address
@@ -117,9 +123,10 @@ new addresses start with locally.
 
 `bin/milton` runs a service command on demand (`milton <service> <command>`).
 `worker process` runs `task.process` once per address (`[address]` narrows it to
-one) and `--preserve-inbox` leaves the batch in `mail/inbox` instead of moving
-it to `mail/archive`, so the report in `mail/outbox/<id>/message.html` can be
-previewed locally without consuming the mail. the run is labelled `preview`,
+one) and `--preserve-inbox` leaves the batch in `mail/inbox` and `site/inbox`
+instead of moving it to the archive, so the report in
+`mail/outbox/<id>/message.html` can be previewed locally, site pages included,
+without consuming them. the run is labelled `preview`,
 which is also the report subject when `template.json` has none. set
 `MILTON_WORKER_API_KEY` first.
 

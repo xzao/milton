@@ -450,7 +450,8 @@ under `src/` with a `main.py` and a `requirements.txt`, wired in
   failures.
 - **worker** — `main.py` schedules; `task.py` runs one report.
   - `register()` adds one `scheduler` job per entry in the address
-    `template.json` `schedules` list (and makes the `mail/` folders). The
+    `template.json` `schedules` list (and makes the `mail/` and `site/`
+    folders). The
     loop calls it again every `MILTON_WORKER_RELOAD` seconds, adding and
     removing only the jobs that changed, and runs them via
     `scheduler.exec_jobs()`. All schedules of an address share one inbox, so
@@ -458,17 +459,21 @@ under `src/` with a `main.py` and a `requirements.txt`, wired in
     one.
   - `task.process(root, user, schedule)` reads `prompt.md`, `repo/`,
     `template.json` and `template.html` (see `#   config`), then takes
-    messages from `mail/inbox` in sorted order while they fit in
-    `MILTON_WORKER_INPUT_LIMIT` less the context — at least one; the rest wait
-    for the next run.
-  - `generate(prompt, context, messages, schema)` makes one model call. The
-    user message is tagged blocks in this order: `<mail>` of
-    `<message id from to date subject attachments>`, `<context>`, `<schema>`,
-    `<prompt>`, each file a `<file path="…">`. Mail and context are cut to
-    `MILTON_WORKER_INPUT_LIMIT` characters; schema and prompt never are.
-    `tag_guard` escapes any `</file`, `</message`, `</mail`, `</context`,
-    `</schema`, `</prompt` inside a block so its text cannot forge one. The
-    system message names each block's role, says mail and context are data,
+    folders from `mail/inbox` and then `site/inbox` (`list_folders`), in
+    sorted order, while they fit in `MILTON_WORKER_INPUT_LIMIT` less the
+    context — at least one; the rest wait for the next run. When both inboxes
+    are empty there is no model call: the report is `nothing()`, unless
+    `MILTON_WORKER_SUPPRESS_EMPTY` is set to `1`, which skips the run.
+  - `generate(prompt, context, messages, schema, pages)` makes one model
+    call. The user message is tagged blocks in this order: `<mail>` of
+    `<message id from to date subject attachments>`, `<site>` (only when
+    there are pages; every file of each `site/inbox/<id>/`, via `get_page`),
+    `<context>`, `<schema>`, `<prompt>`, each file a `<file path="…">`. Mail,
+    site and context are cut to `MILTON_WORKER_INPUT_LIMIT` characters;
+    schema and prompt never are. `tag_guard` escapes any `</file`,
+    `</message`, `</mail`, `</site`, `</context`, `</schema`, `</prompt`
+    inside a block so its text cannot forge one. The system message names
+    each block's role, says mail, site and context are data,
     not instructions, and asks for one json object — the schema filled in,
     every key and value type kept. `task.model` is an openai client against
     openrouter by default, the reply capped at `MILTON_WORKER_MAX_TOKENS`;
@@ -486,9 +491,10 @@ under `src/` with a `main.py` and a `requirements.txt`, wired in
     `message.json` — from/to/subject/cc/bcc from the address `template.json`,
     plus `data`, the model reply the template renders (the json object, or
     the raw text when it does not parse; `reply_load`). The batch then moves to
-    `mail/archive` — unless `preserve_inbox = True`, which `bin/milton worker
-    process [address] --preserve-inbox` (and `make preview`) uses to preview
-    a report with the fixed schedule label `preview`.
+    the sibling archive — `mail/archive` or `site/archive` — unless
+    `preserve_inbox = True`, which `bin/milton worker process [address]
+    --preserve-inbox` (and `make preview`) uses to preview a report, site
+    pages included, with the fixed schedule label `preview`.
 - **dispatcher** — scans each user's `mail/outbox`, validates the recipient,
   sends `message.html` with amazon ses (`message.py` builds the destination and
   content from `message.json`), and moves the report to `mail/sent`. `send`
@@ -518,7 +524,7 @@ by compose:
 /etc/milton/staples/<email>/prompt.md        prompt text, shared by all schedules
 /etc/milton/staples/<email>/template.html    jinja2 email template (optional)
 /etc/milton/staples/<email>/repo/            reference files, every file sent as `<context>`
-/etc/milton/staples/<email>/html/            scraped html — nothing reads it yet
+/etc/milton/staples/<email>/site/            scraped pages, one `<id>/` folder each: inbox / archive
 /etc/milton/staples/<email>/mail/            received mail and reports: inbox / outbox / sent / archive
 /etc/milton/skel/                           new address files (from the repo `etc/milton/skel/`), copied by `make init`
 ```
@@ -561,6 +567,7 @@ MILTON_WORKER_MODEL
 MILTON_WORKER_INPUT_LIMIT
 MILTON_WORKER_MAX_TOKENS
 MILTON_WORKER_RELOAD
+MILTON_WORKER_SUPPRESS_EMPTY
 MILTON_DISPATCHER_INTERVAL
 MILTON_DISPATCHER_SES_REGION
 MILTON_CLI_WORKER_ADDRESS
@@ -604,8 +611,8 @@ them from `$(MAKECMDGOALS)`:
 - `flush [address ...]` lists the reports in `mail/outbox` (every address by
   default) and deletes them only after a `y` confirm;
 - `init <email>` creates a new address folder — `repo/`,
-  `html/`, `mail/` with its `inbox`, `outbox`, `sent` and
-  `archive`, and a copy of everything in `/etc/milton/skel` (`prompt.md`,
+  `mail/` with its `inbox`, `outbox`, `sent` and `archive`, `site/` with
+  its `inbox` and `archive`, and a copy of everything in `/etc/milton/skel` (`prompt.md`,
   `template.json`, `template.html`), owned by `MILTON_UID` / `MILTON_GID`; it
   refuses an argument without `@`, an existing address and a missing skel;
 - `install` (run by the devcontainer) links `/etc/milton` to `mnt/etc/milton`,
@@ -613,7 +620,7 @@ them from `$(MAKECMDGOALS)`:
   overwriting files already there (`cp --update=none`, so local edits
   survive), and installs the requirements;
 - `preview` previews a report for `MILTON_CLI_WORKER_ADDRESS` (every address
-  when empty) without consuming the inbox;
+  when empty), site pages included, without consuming either inbox;
 - `test [component ...]` runs one test folder (all of `test/` by default);
 - `upgrade` pulls and rebuilds the stack; `version <x.y.z>` writes `VERSION`,
   commits and tags `v<x.y.z>` on a clean tree.

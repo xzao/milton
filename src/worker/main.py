@@ -41,8 +41,8 @@ def register():
     for user in util.emails(EMAILS):
 
         # dir make
-        for sub in ['inbox', 'outbox', 'sent', 'archive']:
-            os.makedirs(f"{EMAILS}/{user}/mail/{sub}", exist_ok = True)
+        for sub in ['mail/inbox', 'mail/outbox', 'mail/sent', 'mail/archive', 'site/inbox', 'site/archive']:
+            os.makedirs(f"{EMAILS}/{user}/{sub}", exist_ok = True)
 
         # schedule[s]
         schedules = list_schedules(EMAILS, user)

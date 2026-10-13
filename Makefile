@@ -63,9 +63,9 @@ init:
 		echo "address exists '$$folder'"; \
 		exit 1; \
 	fi; \
-	mkdir -p "$$folder/repo" "$$folder/html"; \
-	for sub in inbox outbox sent archive; do \
-		mkdir -p "$$folder/mail/$$sub"; \
+	mkdir -p "$$folder/repo"; \
+	for sub in mail/inbox mail/outbox mail/sent mail/archive site/inbox site/archive; do \
+		mkdir -p "$$folder/$$sub"; \
 	done; \
 	cp -r "$$skel/." "$$folder/"; \
 	sudo chown -R $(or $(MILTON_UID),1000):$(or $(MILTON_GID),1000) "$$folder"; \
