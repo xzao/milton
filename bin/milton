@@ -44,10 +44,10 @@ util.log_setup()
 #
 #   command[s]
 #
-def scraper_scrape(args):
+def scraper_process(args):
 
     # address[s]
-    if args.address == None:
+    if not args.address:
         addresses = util.emails(EMAILS)
     else:
         addresses = [args.address]
@@ -77,7 +77,7 @@ def scraper_scrape(args):
 def worker_process(args):
 
     # address[s]
-    if args.address == None:
+    if not args.address:
         addresses = util.emails(EMAILS)
     else:
         addresses = [args.address]
@@ -123,20 +123,20 @@ service = parser.add_subparsers(dest = 'service', required = True)
 scraper = service.add_parser('scraper', help = 'site scraping commands')
 scraper_command = scraper.add_subparsers(dest = 'command', required = True)
 
-# scraper scrape
-scraper_scrape_parser = scraper_command.add_parser(
-    'scrape',
+# scraper process
+scraper_process_parser = scraper_command.add_parser(
+    'process',
     help = 'fetch the sites of an address into xml/inbox, once per address'
 )
 
-scraper_scrape_parser.add_argument(
+scraper_process_parser.add_argument(
     'address',
     nargs   = '?',
     default = None,
     help    = 'address folder; every address when omitted'
 )
 
-scraper_scrape_parser.set_defaults(run = scraper_scrape)
+scraper_process_parser.set_defaults(run = scraper_process)
 
 # worker
 worker = service.add_parser('worker', help = 'mail processing commands')

@@ -370,7 +370,7 @@ import zoneinfo
   - `<noun>_<verb>` — a small transform (`text_cut`, `json_extract`); in tests,
     a tree / stub builder (`user_make`, `message_make`, `model_make`).
   - `<service>_<command>` — a `bin/milton` command (`worker_process`,
-    `scraper_scrape`).
+    `scraper_process`).
 - The one class is the `receiver` `Handler`; its instances are lowercase.
 - Avoid abbreviations that are not already in the codebase (`fp`, `id`, `raw`,
   `sub` are all established — use them). Caught exceptions are `error`.
@@ -632,7 +632,8 @@ pass it on as the standard `TZ` (`UTC` by default), which sets log timestamps
 and the worker's schedule zone.
 
 `MILTON_CLI_*` variables feed developer commands only (`make preview` passes
-`MILTON_CLI_WORKER_ADDRESS` to `bin/milton worker process`); no service reads
+`MILTON_CLI_WORKER_ADDRESS` to `bin/milton scraper process` and
+`bin/milton worker process`); no service reads
 them. Every variable has a default in code (`util.env` / `util.env_int`),
 and an empty value counts as unset.
 
@@ -662,8 +663,9 @@ them from `$(MAKECMDGOALS)`:
 
 - `develop [service ...]` runs the listed services concurrently in dev
   (`receiver`, `scraper`, `worker`, `dispatcher` — all four by default);
-- `flush [address ...]` lists the reports in `mail/outbox` (every address by
-  default) and deletes them only after a `y` confirm;
+- `flush [address ...]` lists the reports in `mail/outbox` and the scraped
+  pages in `xml/inbox` (every address by default) and deletes them only after
+  a `y` confirm;
 - `init <email>` creates a new address folder — `code/`,
   `mail/` with its `inbox`, `outbox`, `sent` and `archive`, `xml/` with
   its `inbox` and `archive`, and a copy of everything in `/etc/milton/skel` (`prompt.md`,
@@ -676,7 +678,8 @@ them from `$(MAKECMDGOALS)`:
 - `permissions` resets the ownership of all of `mnt/` to `MILTON_UID` /
   `MILTON_GID` (`1000:1000` by default);
 - `preview` previews a report for `MILTON_CLI_WORKER_ADDRESS` (every address
-  when empty), xml pages included, without consuming either inbox;
+  when empty): it scrapes the sites first (`bin/milton scraper process`, a
+  failed site ignored), then runs the worker without consuming either inbox;
 - `test [component ...]` runs one test folder (all of `test/` by default);
 - `upgrade` pulls and rebuilds the stack; `version <x.y.z>` writes `VERSION`,
   commits and tags `v<x.y.z>` on a clean tree.

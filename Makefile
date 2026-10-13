@@ -28,24 +28,25 @@ develop:
 flush:
 	@addresses="$(filter-out $@,$(MAKECMDGOALS))"; \
 	[ -n "$$addresses" ] || addresses="$$(ls mnt/etc/milton/staples 2>/dev/null)"; \
-	outboxes=""; \
+	folders=""; \
 	for address in $$addresses; do \
-		outboxes="$$outboxes mnt/etc/milton/staples/$$address/mail/outbox"; \
+		folders="$$folders mnt/etc/milton/staples/$$address/mail/outbox"; \
+		folders="$$folders mnt/etc/milton/staples/$$address/xml/inbox"; \
 	done; \
-	reports="$$(find $$outboxes -mindepth 1 -maxdepth 1 2>/dev/null)"; \
-	if [ -z "$$reports" ]; then \
-		echo "outbox empty"; \
+	items="$$(find $$folders -mindepth 1 -maxdepth 1 2>/dev/null)"; \
+	if [ -z "$$items" ]; then \
+		echo "nothing to flush"; \
 		exit 0; \
 	fi; \
-	echo "$$reports"; \
-	printf "flush $$(echo "$$reports" | wc -l) report(s)? [y/N] "; \
+	echo "$$items"; \
+	printf "flush $$(echo "$$items" | wc -l) item(s)? [y/N] "; \
 	read answer; \
 	if [ "$$answer" != "y" ]; then \
 		echo "flush cancelled"; \
 		exit 0; \
 	fi; \
-	echo "$$reports" | xargs rm -rf; \
-	echo "outbox flushed"
+	echo "$$items" | xargs rm -rf; \
+	echo "flushed"
 
 init:
 	@address="$(filter-out $@,$(MAKECMDGOALS))"; \
@@ -89,6 +90,7 @@ permissions:
 	sudo chown -R $(or $(MILTON_UID),1000):$(or $(MILTON_GID),1000) $(CURDIR)/mnt
 
 preview:
+	@python bin/milton scraper process "${MILTON_CLI_WORKER_ADDRESS}"
 	@python bin/milton worker process "${MILTON_CLI_WORKER_ADDRESS}" --preserve-inbox
 
 restart:

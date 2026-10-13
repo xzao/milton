@@ -109,7 +109,7 @@ every schedule fetches every site (`MILTON_SCRAPER_TIMEOUT`, `30` seconds by
 default, bounds each request), so an address with no `scraper`
 schedule is never scraped. an interval such as `1h` is counted from when the
 scraper registers it, so the first scrape is one interval after start — use
-`bin/milton scraper scrape` to fetch now. the scraper re-reads addresses and
+`bin/milton scraper process` to fetch now. the scraper re-reads addresses and
 `schedules` every `MILTON_SCRAPER_RELOAD` seconds (`300` by default). a run
 writes `xml/inbox/<id>/page.json` (`name`, `url`, `date`) and `page.txt`
 only when the text differs from the last page of that `name`, so an unchanged
@@ -148,13 +148,13 @@ schedule edits need no restart.
 
 ```
 make develop [receiver scraper worker dispatcher]   run services locally (all four by default)
-make flush [address ...]           clear unsent reports from mail/outbox (asks first)
+make flush [address ...]           clear unsent reports from mail/outbox and pages from xml/inbox (asks first)
 make init you@example.com         create a new address from /etc/milton/skel
 make permissions                   chown mnt/ to MILTON_UID:MILTON_GID (1000:1000)
-make preview                       preview a report without consuming the inbox
+make preview                       scrape, then preview a report without consuming the inbox
 make start                         build and start the stack
 make logs                          follow service logs
-bin/milton scraper scrape [address]                      scrape on demand
+bin/milton scraper process [address]                     scrape on demand
 bin/milton worker process [address] [--preserve-inbox]   process on demand
 ```
 
@@ -176,7 +176,7 @@ new addresses start with locally.
 one) and `--preserve-inbox` leaves the batch in `mail/inbox` and `xml/inbox`
 instead of moving it to the archive, so the report in
 `mail/outbox/<id>/message.html` can be previewed locally, xml pages included,
-without consuming them. `scraper scrape` fetches the `sites` of each address
+without consuming them. `scraper process` fetches the `sites` of each address
 once, into `xml/inbox`. the worker run is labelled `preview`,
 which is also the report subject when `staple.json` has none. set
 `MILTON_WORKER_API_KEY` first.
