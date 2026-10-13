@@ -1,8 +1,9 @@
 # agents :: milton
 
-`milton` is a small python service stack that listens on smtp, runs scheduled
-prompts over received mail and context, and emails the resulting reports. It is
-three services — `receiver`, `worker`, `dispatcher` — sharing one data volume.
+`milton` is a small python service stack that listens on smtp, scrapes html
+sites, runs scheduled prompts over received mail, scraped pages and context,
+and emails the resulting reports. It is four services — `receiver`, `scraper`,
+`worker`, `dispatcher` — sharing one data volume.
 
 Everything is written in a deliberately literal, comment-first style: every
 file, every section and every step is announced by a lowercase comment banner.
@@ -25,6 +26,10 @@ milton/
 │   │   ├── main.py          smtp listener entrypoint
 │   │   ├── handler.py       smtp handler (importable / testable)
 │   │   └── requirements.txt aiosmtpd
+│   ├── scraper/
+│   │   ├── main.py          scheduler + scrape loop entrypoint
+│   │   ├── page.py          site fetch / extract / save (importable / testable)
+│   │   └── requirements.txt lxml, requests, scheduler
 │   ├── worker/
 │   │   ├── main.py          scheduler + prompt loop entrypoint
 │   │   ├── task.py          prompt run logic (importable / testable)
@@ -35,6 +40,7 @@ milton/
 │   │   └── requirements.txt boto3
 │   └── shared/
 │       ├── __init__.py      re-exports util, mail, uuid7
+│       ├── schedule.py      schedule entry parse (worker + scraper)
 │       ├── util.py          env helpers + address inference + log setup
 │       ├── mail.py          email parse / body / attachments
 │       └── uuid7.py         uuidv7 generator
@@ -42,7 +48,7 @@ milton/
 │   └── milton               developer command (service + command front door)
 ├── test/
 │   ├── conftest.py          adds src/ to sys.path for imports
-│   └── receiver/  worker/  dispatcher/  shared/
+│   └── receiver/  scraper/  worker/  dispatcher/  shared/
 ├── etc/milton/skel/         new address files, copied to /etc/milton/skel by `make install`
 ├── mnt/                     runtime data — not committed (linked/mounted at /etc/milton)
 ├── .devcontainer/           devcontainer (runs `make install`)
@@ -60,7 +66,7 @@ Rules:
 
 - Code lives under `src/`; developer commands under `bin/`; data lives under
   `mnt/`; the committed default address files live under `etc/milton/skel/`.
-- Three services, one per directory, each with its own `main.py` and
+- Four services, one per directory, each with its own `main.py` and
   `requirements.txt`.
 - `src/shared/` holds code used by more than one service; it is copied into
   every image and importable via `PYTHONPATH=src` in development.
@@ -73,7 +79,7 @@ Rules:
   bootstraps `sys.path` in a `#   path` section before its imports. It is never
   copied into an image and no service imports it.
 - A service may carry one service-local importable module beside its `main.py`
-  (`handler.py`, `task.py`, `message.py`) when its logic needs tests. Such a
+  (`handler.py`, `page.py`, `task.py`, `message.py`) when its logic needs tests. Such a
   module does no work at import, takes `root` instead of reading the data tree
   from a module constant, and is imported bare (`from task import process`);
   `main.py` keeps the env, directories, registration and loop.
@@ -131,7 +137,8 @@ Sections split a file into named blocks. Every section is:
   `var[s]`, `get[s]`, `attachment[s]`, `service[s]`, `target[s]`. Singular when
   it holds one: `logging`, `loop`, `handler`, `controller`, `send`, `process`,
   `register`, `interval`, `list`, `model`, `generate`, `render`, `path`,
-  `parser`, `run`, `working`, `command`.
+  `parser`, `run`, `working`, `command`, `fetch`, `extract`, `scrape`,
+  `collect`, `timing`.
 - Sections are separated by **two blank lines**.
 - Sections run top-to-bottom in dependency order. The established order is:
 
@@ -139,12 +146,15 @@ Sections split a file into named blocks. Every section is:
   |---|---|
   | `src/receiver/main.py` | `var[s]` → `logging` → `controller` → `loop` |
   | `src/receiver/handler.py` | `handler` |
+  | `src/scraper/main.py` | `var[s]` → `logging` → `register` → `loop` |
+  | `src/scraper/page.py` | `get[s]` → `list` → `fetch` → `extract` → `scrape` → `collect` |
   | `src/worker/main.py` | `var[s]` → `logging` → `register` → `loop` |
-  | `src/worker/task.py` | `interval` → `get[s]` → `list` → `model` → `generate` → `render` → `process` |
+  | `src/worker/task.py` | `get[s]` → `list` → `model` → `generate` → `render` → `process` |
   | `src/dispatcher/main.py` | `var[s]` → `logging` → `dir[s]` → `send` → `loop` |
   | `src/dispatcher/message.py` | `address` → `destination` → `content` |
   | `src/shared/util.py` | `env[s]` → `email[s]` → `log` |
   | `src/shared/mail.py` | `parse` → `body` → `attachment[s]` |
+  | `src/shared/schedule.py` | `interval` → `timing` |
   | `src/shared/uuid7.py` | `new` |
   | `Dockerfile` | `working` → `service` → `requirement[s]` → `src` → `command` |
   | `bin/milton` | `path` → `import[s]` → `var[s]` → `logging` → `command[s]` → `parser` → `run` |
@@ -214,7 +224,8 @@ def env_int(name, default):
 - Small helpers used by one section live in that section, above the function
   that uses them (`text_cut` and `json_extract` sit in `#   generate`,
   `tag_guard`, `get_text` and `get_file` head `#   get[s]`,
-  `reply_load` and `reply_pretty` head `#   render`).
+  `reply_load` and `reply_pretty` head `#   render`, `last` heads
+  `#   scrape`).
 - Handle exceptions with `raise Exception('<lowercase message>')`. Messages are
   lowercase, unpunctuated, and use bracket context where useful:
   `raise Exception('report missing recipient')`,
@@ -300,8 +311,8 @@ Order:
    `from . import ...` inside `shared/__init__.py`.
 2. Then every plain `import x` — standard library and third-party together — in
    one alphabetical block (`argparse`, `boto3`, `datetime`, `email`,
-   `functools`, `jinja2`, `json`, `logging`, `openai`, `os`, `re`,
-   `scheduler`, `sys`, `time`, `zoneinfo`).
+   `functools`, `jinja2`, `json`, `logging`, `lxml.etree`, `lxml.html`,
+   `openai`, `os`, `re`, `requests`, `scheduler`, `sys`, `time`, `zoneinfo`).
 
 One module per `import` line. Never `from x import *`. No import sorting tools
 — the order above is intentional and stable.
@@ -316,8 +327,8 @@ directory is on the path at runtime (the script's own directory, or
 #
 #   src/worker/main.py
 #
-from shared import util
-from task import interval, list_schedules, process, timing
+from shared import schedule, util
+from task import list_schedules, process
 import functools
 import logging
 import os
@@ -354,11 +365,12 @@ import zoneinfo
   - `get_*` — fetch one value (`get_text`, `get_file`, `get_prompt`,
     `get_context`, `get_schema`, `get_template`,
     `get_properties(root, user)`, `get_key`).
-  - `list_*` — fetch many, return a list (`list_schedules`).
+  - `list_*` — fetch many, return a list (`list_schedules`, `list_sites`).
   - `emails` / `valid` — infer valid addresses from the data tree.
   - `<noun>_<verb>` — a small transform (`text_cut`, `json_extract`); in tests,
     a tree / stub builder (`user_make`, `message_make`, `model_make`).
-  - `<service>_<command>` — a `bin/milton` command (`worker_process`).
+  - `<service>_<command>` — a `bin/milton` command (`worker_process`,
+    `scraper_scrape`).
 - The one class is the `receiver` `Handler`; its instances are lowercase.
 - Avoid abbreviations that are not already in the codebase (`fp`, `id`, `raw`,
   `sub` are all established — use them). Caught exceptions are `error`.
@@ -438,7 +450,7 @@ logging.error(f"[{name}] failed[{error}]")
 #   service[s]
 #
 
-Three services share one data tree under `/etc/milton`. Each is one directory
+Four services share one data tree under `/etc/milton`. Each is one directory
 under `src/` with a `main.py` and a `requirements.txt`, wired in
 `docker-compose.yml`.
 
@@ -448,32 +460,58 @@ under `src/` with a `main.py` and a `requirements.txt`, wired in
   when there is no `handle_RCPT` hook — then writes `message.eml` +
   attachments into `mail/inbox/<uuid7>/`, logging rejected addresses and save
   failures.
+- **scraper** — `main.py` schedules; `page.py` fetches the sites.
+  - `register()` adds one `scheduler` job per entry in the address
+    `staple.json` `schedules` `scraper` list (`list_schedules`), exactly
+    as the worker does for its own list: re-read every `MILTON_SCRAPER_RELOAD` seconds,
+    only the changed jobs added and removed, run via `scheduler.exec_jobs()`.
+    An address with no `scraper` schedule is never scraped.
+  - `collect(root, user, timeout)` is the job: it scrapes every site of the
+    address, logs a failed site and carries on, and returns `False` when one
+    failed or `staple.json` does not parse.
+  - `list_sites(root, user)` reads the address `staple.json` `sites`
+    list (see `#   config`) and drops every entry without a `url`, so the
+    empty skeleton entry of a new address is skipped.
+  - `fetch(site, timeout)` makes one `requests` call from the entry's
+    `request` skeleton — `method` (`GET` by default), `headers`, `params` and
+    `body` (an object is sent as json, a text as is) — and raises
+    `site status '<code>'` on a 4xx / 5xx.
+  - `extract(markup, xpath)` returns the text to report on: the whole page
+    through `mail.text` without an `xpath`, otherwise every match — an element
+    through `mail.text`, an attribute / string / number as is — joined by a
+    blank line.
+  - `scrape(root, user, site, timeout)` writes `page.json` (`name`, `url`,
+    `date`) and `page.txt` into `xml/<uuid7>/` and moves the folder to
+    `xml/inbox/<uuid7>/`, so the worker never sees half a page. It skips an
+    empty extract, and a text equal to the newest page of the same `name` in
+    `xml/inbox` or `xml/archive` (`last`), so a page is reported only when
+    it changes.
 - **worker** — `main.py` schedules; `task.py` runs one report.
   - `register()` adds one `scheduler` job per entry in the address
-    `template.json` `schedules` list (and makes the `mail/` and `site/`
+    `staple.json` `schedules` `worker` list (and makes the `mail/` and `xml/`
     folders). The
     loop calls it again every `MILTON_WORKER_RELOAD` seconds, adding and
     removing only the jobs that changed, and runs them via
     `scheduler.exec_jobs()`. All schedules of an address share one inbox, so
     the first to run takes the mail; `register` warns when there is more than
     one.
-  - `task.process(root, user, schedule)` reads `prompt.md`, `repo/`,
-    `template.json` and `template.html` (see `#   config`), then takes
-    folders from `mail/inbox` and then `site/inbox` (`list_folders`), in
+  - `task.process(root, user, schedule)` reads `prompt.md`, `code/`,
+    `staple.json`, `template.json` and `template.html` (see `#   config`), then takes
+    folders from `mail/inbox` and then `xml/inbox` (`list_folders`), in
     sorted order, while they fit in `MILTON_WORKER_INPUT_LIMIT` less the
     context — at least one; the rest wait for the next run. When both inboxes
     are empty there is no model call: the report is `nothing()`, unless
     `MILTON_WORKER_SUPPRESS_EMPTY` is set to `1`, which skips the run.
   - `generate(prompt, context, messages, schema, pages)` makes one model
     call. The user message is tagged blocks in this order: `<mail>` of
-    `<message id from to date subject attachments>`, `<site>` (only when
-    there are pages; every file of each `site/inbox/<id>/`, via `get_page`),
+    `<message id from to date subject attachments>`, `<xml>` (only when
+    there are pages; every file of each `xml/inbox/<id>/`, via `get_page`),
     `<context>`, `<schema>`, `<prompt>`, each file a `<file path="…">`. Mail,
-    site and context are cut to `MILTON_WORKER_INPUT_LIMIT` characters;
+    xml and context are cut to `MILTON_WORKER_INPUT_LIMIT` characters;
     schema and prompt never are. `tag_guard` escapes any `</file`,
-    `</message`, `</mail`, `</site`, `</context`, `</schema`, `</prompt`
+    `</message`, `</mail`, `</xml`, `</context`, `</schema`, `</prompt`
     inside a block so its text cannot forge one. The system message names
-    each block's role, says mail, site and context are data,
+    each block's role, says mail, xml and context are data,
     not instructions, and asks for one json object — the schema filled in,
     every key and value type kept. `task.model` is an openai client against
     openrouter by default, the reply capped at `MILTON_WORKER_MAX_TOKENS`;
@@ -488,12 +526,12 @@ under `src/` with a `main.py` and a `requirements.txt`, wired in
     (pretty-printed when it parses) in a `<pre>`. An address with no
     `template.html` always gets `fallback(reply)`.
   - The report is one `mail/outbox/<uuid7>/` folder: `message.html` and
-    `message.json` — from/to/subject/cc/bcc from the address `template.json`,
+    `message.json` — from/to/subject/cc/bcc from the address `staple.json`,
     plus `data`, the model reply the template renders (the json object, or
     the raw text when it does not parse; `reply_load`). The batch then moves to
-    the sibling archive — `mail/archive` or `site/archive` — unless
+    the sibling archive — `mail/archive` or `xml/archive` — unless
     `preserve_inbox = True`, which `bin/milton worker process [address]
-    --preserve-inbox` (and `make preview`) uses to preview a report, site
+    --preserve-inbox` (and `make preview`) uses to preview a report, xml
     pages included, with the fixed schedule label `preview`.
 - **dispatcher** — scans each user's `mail/outbox`, validates the recipient,
   sends `message.html` with amazon ses (`message.py` builds the destination and
@@ -501,11 +539,14 @@ under `src/` with a `main.py` and a `requirements.txt`, wired in
   returns `False` without sending when `AWS_SECRET_ACCESS_KEY` is unset.
 
 `src/shared/` holds the reusable pieces: `util` (env + address inference),
-`mail` (parse/body/attachments), `uuid7` (uuidv7).
+`mail` (parse/body/attachments), `uuid7` (uuidv7), `schedule` (schedule entry
+→ interval / triggers). `schedule` needs the `scheduler` package, which only
+the worker and scraper images install, so `__init__.py` does not re-export
+it: import it by name (`from shared import schedule, util`).
 
 Adding a service means: create `src/<name>/main.py` + `requirements.txt`, add
 the `from shared import ...` line, and add a `build.args.SERVICE` block to
-`docker-compose.yml`. Then list it wherever the three services are listed:
+`docker-compose.yml`. Then list it wherever the four services are listed:
 the `pip install -r` lines and the `develop` default in the `Makefile`, the
 service dir loop in `bin/milton`, and `extraPaths` in `pyrightconfig.json`.
 
@@ -520,11 +561,12 @@ linked to `/etc/milton` in the devcontainer and bind-mounted at `/etc/milton`
 by compose:
 
 ```
-/etc/milton/staples/<email>/template.json    address settings: mail headers, schedules, data
+/etc/milton/staples/<email>/staple.json      address settings: mail headers, schedules, sites
+/etc/milton/staples/<email>/template.json    data skeleton of `template.html`, sent as the `<schema>`
 /etc/milton/staples/<email>/prompt.md        prompt text, shared by all schedules
 /etc/milton/staples/<email>/template.html    jinja2 email template (optional)
-/etc/milton/staples/<email>/repo/            reference files, every file sent as `<context>`
-/etc/milton/staples/<email>/site/            scraped pages, one `<id>/` folder each: inbox / archive
+/etc/milton/staples/<email>/code/            reference files, every file sent as `<context>`
+/etc/milton/staples/<email>/xml/            scraped pages, one `<id>/` folder each: inbox / archive
 /etc/milton/staples/<email>/mail/            received mail and reports: inbox / outbox / sent / archive
 /etc/milton/skel/                           new address files (from the repo `etc/milton/skel/`), copied by `make init`
 ```
@@ -532,22 +574,31 @@ by compose:
 A `<email>` is valid when its `mail/` folder exists. `util.emails(EMAILS)` lists
 them; `util.valid(EMAILS, address)` checks one.
 
-`template.json` holds the address settings, read through `get_properties`.
-It is the shape of every `mail/outbox/<uuid7>/message.json`, which carries the
-same headers, resolved, and `data` filled in:
+`staple.json` holds the address settings — the staple properties — read
+through `get_properties` (the worker's in `task.py`, the scraper's in
+`page.py`). It never reaches the model:
 
 - `from`, `to`, `subject`, `cc`, `bcc` — the report headers, copied into
-  `message.json` and applied by the dispatcher. `from` and `to` default to the
-  address, `subject` to the schedule.
-- `schedules` — the schedules to run; a schedule exists when it is listed.
-  An entry is an interval token (`5m`, `30m`, `1h`, `daily`, `weekly`, via
-  `task.interval` and `jobs.cyclic`) or a day list and `HH:MM` times
-  (`daily 08:00`, `weekdays 08:30 17:00`, `mon,fri 09:00`, via `task.timing`
-  and `jobs.weekly`) in the `TZ` zone (`UTC` by default). `register` logs and
-  skips an entry `timing` refuses.
-- `data` — the json skeleton the model fills in, sent as the `<schema>` (via
-  `get_schema`; the headers and schedules never reach the model). Without it
-  the model designs its own json.
+  every `mail/outbox/<uuid7>/message.json` and applied by the dispatcher.
+  `from` and `to` default to the address, `subject` to the schedule.
+- `schedules` — one list per service, `worker` (when to report) and `scraper`
+  (when to scrape, every entry scraping every site); a schedule exists when it
+  is listed. An entry is an interval token (`5m`, `30m`, `1h`, `daily`,
+  `weekly`, via `schedule.interval` and `jobs.cyclic`) or a day list and
+  `HH:MM` times (`daily 08:00`, `weekdays 08:30 17:00`, `mon,fri 09:00`, via
+  `schedule.timing` and `jobs.weekly`) in the `TZ` zone (`UTC` by default).
+  `register` logs and skips an entry `timing` refuses.
+- `sites` — the html sites the scraper fetches, one request skeleton each:
+  `name` (the page label and the key a change is detected by; the `url` when
+  empty), `url` (an entry without one is skipped), `xpath` (what to keep; the
+  whole page when empty) and `request` — `method`, `headers`, `params`,
+  `body`. Header and param values are sent as written, api keys included, so
+  they live only in the uncommitted `mnt/`.
+
+`template.json` is the data skeleton of `template.html` and nothing else: the
+json object the model fills in, sent whole as the `<schema>` (via
+`get_schema`) and stored, filled in, as `data` in `message.json`. Without it,
+or when it is empty, the model designs its own json.
 
 Every schedule shares the address `prompt.md` (required; `get_prompt` raises
 `prompt missing` without it) and `template.html` (without it the report is the
@@ -560,6 +611,9 @@ MILTON_UID
 MILTON_GID
 MILTON_TIMEZONE
 MILTON_RECEIVER_SMTP_PORT
+MILTON_SCRAPER_INTERVAL
+MILTON_SCRAPER_RELOAD
+MILTON_SCRAPER_TIMEOUT
 MILTON_WORKER_INTERVAL
 MILTON_WORKER_API_KEY
 MILTON_WORKER_API_URL
@@ -607,13 +661,13 @@ last section, `#\targ[s]`, swallows extra goal arguments so targets can read
 them from `$(MAKECMDGOALS)`:
 
 - `develop [service ...]` runs the listed services concurrently in dev
-  (`receiver`, `worker`, `dispatcher` — all three by default);
+  (`receiver`, `scraper`, `worker`, `dispatcher` — all four by default);
 - `flush [address ...]` lists the reports in `mail/outbox` (every address by
   default) and deletes them only after a `y` confirm;
-- `init <email>` creates a new address folder — `repo/`,
-  `mail/` with its `inbox`, `outbox`, `sent` and `archive`, `site/` with
+- `init <email>` creates a new address folder — `code/`,
+  `mail/` with its `inbox`, `outbox`, `sent` and `archive`, `xml/` with
   its `inbox` and `archive`, and a copy of everything in `/etc/milton/skel` (`prompt.md`,
-  `template.json`, `template.html`), owned by `MILTON_UID` / `MILTON_GID`; it
+  `staple.json`, `template.json`, `template.html`), owned by `MILTON_UID` / `MILTON_GID`; it
   refuses an argument without `@`, an existing address and a missing skel;
 - `install` (run by the devcontainer) links `/etc/milton` to `mnt/etc/milton`,
   copies the repo `etc/milton/skel/` into `/etc/milton/skel` without
@@ -622,7 +676,7 @@ them from `$(MAKECMDGOALS)`:
 - `permissions` resets the ownership of all of `mnt/` to `MILTON_UID` /
   `MILTON_GID` (`1000:1000` by default);
 - `preview` previews a report for `MILTON_CLI_WORKER_ADDRESS` (every address
-  when empty), site pages included, without consuming either inbox;
+  when empty), xml pages included, without consuming either inbox;
 - `test [component ...]` runs one test folder (all of `test/` by default);
 - `upgrade` pulls and rebuilds the stack; `version <x.y.z>` writes `VERSION`,
   commits and tags `v<x.y.z>` on a clean tree.
@@ -632,7 +686,7 @@ The Dockerfile keeps `#   working` → `#   service` → `#   requirement[s]` �
 devcontainer), `WORKDIR /app`, a build `ARG SERVICE` to select the service,
 and the spaced array form `CMD [ "python", "./main.py" ]`.
 
-`docker-compose.yml` runs the three services, each `build`ing with
+`docker-compose.yml` runs the four services, each `build`ing with
 `args: SERVICE: <name>` and running as
 `user: ${MILTON_UID:-1000}:${MILTON_GID:-1000}` so the files it writes through
 the bind mount stay owned by the host user, with `env_file: .env`,
@@ -650,12 +704,13 @@ introduce a `src` package or relative imports that assume one.
 #   test[s]
 #
 
-Tests live under `test/`, one folder per component (`receiver/`, `worker/`,
-`dispatcher/`, `shared/`; `milton/` for `bin/milton` once it has tests), plus
+Tests live under `test/`, one folder per component (`receiver/`, `scraper/`,
+`worker/`, `dispatcher/`, `shared/`; `milton/` for `bin/milton` once it has tests), plus
 `test/conftest.py` which puts `src/` on `sys.path` so tests can
 `from shared import ...`. A component that carries its
 own importable module adds a folder `conftest.py` putting `src/<service>` on
-`sys.path` (`test/receiver/`, `test/worker/`, `test/dispatcher/`), so tests can
+`sys.path` (`test/receiver/`, `test/scraper/`, `test/worker/`,
+`test/dispatcher/`), so tests can
 `from task import process`. pytest is the runner and is wired only through the
 Makefile: `make install` installs it, `make test` runs all of `test/`, and
 `make test <component>/...` runs one folder. Therefore:
@@ -666,7 +721,7 @@ Makefile: `make install` installs it, `make test` runs all of `test/`, and
   (`test_get_prompt_missing_raises`);
 - write tests in this same banner-and-step style, with builders in `#   make[s]`
   and tests in `#   test[s]`;
-- stub the model and env with pytest's `monkeypatch` — no network calls;
+- stub the model, `requests` and env with pytest's `monkeypatch` — no network calls;
 - tests must run without starting any service (no servers, no sockets);
 - tests must pass on a fresh repo — build every tree they need under
   `tmp_path`, never under `/etc/milton` or `mnt/`;

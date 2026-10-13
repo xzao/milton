@@ -19,7 +19,7 @@ export TZ := $(or $(MILTON_TIMEZONE),UTC)
 #
 develop:
 	@services="$(filter-out $@,$(MAKECMDGOALS))"; \
-	[ -n "$$services" ] || services="receiver worker dispatcher"; \
+	[ -n "$$services" ] || services="receiver scraper worker dispatcher"; \
 	for service in $$services; do \
 		PYTHONPATH=src python src/$$service/main.py & \
 	done; \
@@ -63,8 +63,8 @@ init:
 		echo "address exists '$$folder'"; \
 		exit 1; \
 	fi; \
-	mkdir -p "$$folder/repo"; \
-	for sub in mail/inbox mail/outbox mail/sent mail/archive site/inbox site/archive; do \
+	mkdir -p "$$folder/code"; \
+	for sub in mail/inbox mail/outbox mail/sent mail/archive xml/inbox xml/archive; do \
 		mkdir -p "$$folder/$$sub"; \
 	done; \
 	cp -r "$$skel/." "$$folder/"; \
@@ -78,6 +78,7 @@ install:
 	cp -r --update=none $(CURDIR)/etc/milton/skel/. /etc/milton/skel/
 	pip install pytest
 	pip install -r src/receiver/requirements.txt
+	pip install -r src/scraper/requirements.txt
 	pip install -r src/worker/requirements.txt
 	pip install -r src/dispatcher/requirements.txt
 

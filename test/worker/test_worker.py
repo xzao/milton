@@ -3,12 +3,10 @@
 #
 from email.message import EmailMessage
 from shared import uuid7
-from task import fallback, generate, get_context, get_key, get_message, get_prompt, get_schema, get_template, get_properties, interval, json_extract, list_schedules, process, render, text_cut, timing
-import datetime
+from task import fallback, generate, get_context, get_key, get_message, get_prompt, get_schema, get_template, get_properties, json_extract, list_schedules, process, render, text_cut
 import json
 import os
 import pytest
-import zoneinfo
 
 
 #
@@ -21,7 +19,7 @@ def user_make(root, user, schedule = None, prompt = None):
         os.makedirs(f"{root}/{user}/mail/{sub}", exist_ok = True)
 
     # context make
-    os.makedirs(f"{root}/{user}/repo", exist_ok = True)
+    os.makedirs(f"{root}/{user}/code", exist_ok = True)
 
     # prompt make
     if schedule != None:
@@ -54,13 +52,13 @@ def message_make(root, user, body = 'hello body', subject = 'test'):
     # return
     return id
 
-def site_make(root, user, text = '<p>scraped</p>'):
+def xml_make(root, user, text = '<p>scraped</p>'):
 
     # id
     id = uuid7.new()
 
     # folder make
-    folder = f"{root}/{user}/site/inbox/{id}"
+    folder = f"{root}/{user}/xml/inbox/{id}"
     os.makedirs(folder, exist_ok = True)
 
     # page make
@@ -74,7 +72,7 @@ def site_make(root, user, text = '<p>scraped</p>'):
 def properties_make(root, user, properties):
 
     # path
-    path = f"{root}/{user}/template.json"
+    path = f"{root}/{user}/staple.json"
 
     # data
     data = {}
@@ -97,7 +95,7 @@ def properties_make(root, user, properties):
 def schedules_make(root, user, schedules):
 
     # properties make
-    properties_make(root, user, {'schedules': schedules})
+    properties_make(root, user, {'schedules': {'worker': schedules}})
 
     # return
     return schedules
@@ -113,8 +111,9 @@ def prompt_make(root, user, text):
 
 def schema_make(root, user, data = {'title': ''}):
 
-    # properties make
-    properties_make(root, user, {'data': data})
+    # file write
+    with open(f"{root}/{user}/template.json", 'w') as fp:
+        json.dump(data, fp)
 
     # return
     return data
@@ -144,103 +143,6 @@ def model_make(monkeypatch, reply = '{"title": "stub report"}'):
 #
 #   test[s]
 #
-def test_interval_minute():
-
-    # assert
-    assert interval('5m') == datetime.timedelta(minutes = 5)
-
-
-def test_interval_hour():
-
-    # assert
-    assert interval('2h') == datetime.timedelta(hours = 2)
-
-
-def test_interval_daily():
-
-    # assert
-    assert interval('daily') == datetime.timedelta(days = 1)
-
-
-def test_interval_weekly():
-
-    # assert
-    assert interval('weekly') == datetime.timedelta(days = 7)
-
-
-def test_interval_unknown_is_daily():
-
-    # assert
-    assert interval('someday') == datetime.timedelta(days = 1)
-
-
-def test_timing_none_without_time():
-
-    # assert
-    assert timing('daily', datetime.timezone.utc) == None
-    assert timing('5m', datetime.timezone.utc) == None
-
-
-def test_timing_daily_every_day():
-
-    # zone
-    zone = zoneinfo.ZoneInfo('Australia/Melbourne')
-
-    # trigger[s]
-    triggers = timing('daily 08:30', zone)
-
-    # assert
-    assert len(triggers) == 7
-    assert triggers[0].time == datetime.time(8, 30, tzinfo = zone)
-
-
-def test_timing_multiple_days_and_times():
-
-    # trigger[s]
-    triggers = timing('mon,weekends 08:00 17:30', datetime.timezone.utc)
-
-    # day[s]
-    days = []
-
-    # trigger iterate
-    for item in triggers:
-        days.append([type(item).__name__, item.time.hour, item.time.minute])
-
-    # assert
-    assert days == [
-        ['Monday', 8, 0],
-        ['Monday', 17, 30],
-        ['Saturday', 8, 0],
-        ['Saturday', 17, 30],
-        ['Sunday', 8, 0],
-        ['Sunday', 17, 30]
-    ]
-
-
-def test_timing_weekdays_skips_duplicate_days():
-
-    # assert
-    assert len(timing('weekdays,mon 09:00', datetime.timezone.utc)) == 5
-
-
-def test_timing_invalid_day_raises():
-
-    # assert
-    with pytest.raises(Exception, match = 'invalid schedule day'):
-        timing('someday 08:00', datetime.timezone.utc)
-
-
-def test_timing_invalid_time_raises():
-
-    # assert
-    with pytest.raises(Exception, match = 'invalid schedule time'):
-        timing('daily 25:00', datetime.timezone.utc)
-
-    # assert
-    with pytest.raises(Exception, match = 'invalid schedule time'):
-        timing('daily 8am', datetime.timezone.utc)
-
-
 def test_list_schedules_reads_order(tmp_path):
 
     # root
@@ -336,11 +238,11 @@ def test_get_context_concatenates_sorted(tmp_path):
 
     # file make
     for name in ['b.md', 'a.md']:
-        with open(f"{root}/alice@example.com/repo/{name}", 'w') as fp:
+        with open(f"{root}/alice@example.com/code/{name}", 'w') as fp:
             fp.write(name[0])
 
     # assert
-    assert get_context(root, 'alice@example.com') == '<file path="repo/a.md">\na\n</file>\n<file path="repo/b.md">\nb\n</file>\n'
+    assert get_context(root, 'alice@example.com') == '<file path="code/a.md">\na\n</file>\n<file path="code/b.md">\nb\n</file>\n'
 
 
 def test_get_context_walks_nested_dirs(tmp_path):
@@ -352,14 +254,14 @@ def test_get_context_walks_nested_dirs(tmp_path):
     user_make(root, 'alice@example.com')
 
     # dir make
-    os.makedirs(f"{root}/alice@example.com/repo/team", exist_ok = True)
+    os.makedirs(f"{root}/alice@example.com/code/team", exist_ok = True)
 
     # file make
-    with open(f"{root}/alice@example.com/repo/team/roster.md", 'w') as fp:
+    with open(f"{root}/alice@example.com/code/team/roster.md", 'w') as fp:
         fp.write('roster')
 
     # assert
-    assert get_context(root, 'alice@example.com') == '<file path="repo/team/roster.md">\nroster\n</file>\n'
+    assert get_context(root, 'alice@example.com') == '<file path="code/team/roster.md">\nroster\n</file>\n'
 
 
 def test_get_context_empty_without_dir(tmp_path):
@@ -374,7 +276,7 @@ def test_get_context_empty_without_dir(tmp_path):
     assert get_context(root, 'alice@example.com') == ''
 
 
-def test_get_context_ignores_mail_and_site(tmp_path):
+def test_get_context_ignores_mail_and_xml(tmp_path):
 
     # root
     root = f"{tmp_path}/staples"
@@ -385,15 +287,15 @@ def test_get_context_ignores_mail_and_site(tmp_path):
     # message make
     message_make(root, 'alice@example.com')
 
-    # site make
-    site_make(root, 'alice@example.com')
+    # xml make
+    xml_make(root, 'alice@example.com')
 
     # file make
-    with open(f"{root}/alice@example.com/repo/notes.md", 'w') as fp:
+    with open(f"{root}/alice@example.com/code/notes.md", 'w') as fp:
         fp.write('notes')
 
     # assert
-    assert get_context(root, 'alice@example.com') == '<file path="repo/notes.md">\nnotes\n</file>\n'
+    assert get_context(root, 'alice@example.com') == '<file path="code/notes.md">\nnotes\n</file>\n'
 
 
 def test_get_message_reads_headers(tmp_path):
@@ -478,12 +380,12 @@ def test_get_template_reads_root_html(tmp_path):
     template_make(root, 'alice@example.com', '<p>{{ a }}</p>')
 
     # context make
-    with open(f"{root}/alice@example.com/repo/notes.html", 'w') as fp:
+    with open(f"{root}/alice@example.com/code/notes.html", 'w') as fp:
         fp.write('<p>notes</p>')
 
     # assert
     assert get_template(root, 'alice@example.com') == '<p>{{ a }}</p>'
-    assert get_context(root, 'alice@example.com') == '<file path="repo/notes.html">\n<p>notes</p>\n</file>\n'
+    assert get_context(root, 'alice@example.com') == '<file path="code/notes.html">\n<p>notes</p>\n</file>\n'
 
 
 def test_get_template_empty_without_file(tmp_path):
@@ -526,7 +428,7 @@ def test_generate_keeps_schema_uncut(monkeypatch):
     assert '<schema>' in sent[0][0]['content']
 
 
-def test_get_properties_reads_template_json(tmp_path):
+def test_get_properties_reads_staple_json(tmp_path):
 
     # root
     root = f"{tmp_path}/staples"
@@ -537,8 +439,8 @@ def test_get_properties_reads_template_json(tmp_path):
         'subject'   : 'daily digest',
         'cc'        : ['carol@example.com'],
         'bcc'       : [],
-        'schedules' : ['daily'],
-        'data'      : {'title': ''}
+        'schedules' : {'worker': ['daily'], 'scraper': ['1h']},
+        'sites'     : []
     }
 
     # user make
@@ -736,7 +638,7 @@ def test_process_writes_report_and_archives_inbox(tmp_path, monkeypatch):
     assert result == None
 
 
-def test_process_writes_message_json_from_template_json(tmp_path, monkeypatch):
+def test_process_writes_message_json_from_staple_json(tmp_path, monkeypatch):
 
     # root
     root = f"{tmp_path}/staples"
@@ -826,7 +728,7 @@ def test_process_passes_all_mail_to_generate(tmp_path, monkeypatch):
     user_make(root, 'alice@example.com', 'daily', 'summarise the new mail.')
 
     # context make
-    with open(f"{root}/alice@example.com/repo/profile.md", 'w') as fp:
+    with open(f"{root}/alice@example.com/code/profile.md", 'w') as fp:
         fp.write('alice')
 
     # body[s]
@@ -857,7 +759,7 @@ def test_process_passes_all_mail_to_generate(tmp_path, monkeypatch):
     # assert
     assert len(calls) == 1
     assert calls[0]['prompt'] == '<file path="prompt.md">\nsummarise the new mail.\n</file>\n'
-    assert calls[0]['context'] == '<file path="repo/profile.md">\nalice\n</file>\n'
+    assert calls[0]['context'] == '<file path="code/profile.md">\nalice\n</file>\n'
     assert len(calls[0]['bodies']) == 3
 
     # body iterate
@@ -929,7 +831,7 @@ def test_process_empty_inbox_writes_report(tmp_path, monkeypatch):
     assert 'nothing to report' in html
 
 
-def test_process_site_reaches_model_and_archives(tmp_path, monkeypatch):
+def test_process_xml_reaches_model_and_archives(tmp_path, monkeypatch):
 
     # root
     root = f"{tmp_path}/staples"
@@ -937,8 +839,8 @@ def test_process_site_reaches_model_and_archives(tmp_path, monkeypatch):
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new pages.')
 
-    # site make
-    id = site_make(root, 'alice@example.com', '<p>scraped news</p>')
+    # xml make
+    id = xml_make(root, 'alice@example.com', '<p>scraped news</p>')
 
     # call[s]
     calls = []
@@ -946,7 +848,7 @@ def test_process_site_reaches_model_and_archives(tmp_path, monkeypatch):
     # model capture
     def model_capture(messages):
         calls.append(messages)
-        return '{"title": "site report"}'
+        return '{"title": "xml report"}'
 
     # model patch
     monkeypatch.setattr('task.model', model_capture)
@@ -957,20 +859,20 @@ def test_process_site_reaches_model_and_archives(tmp_path, monkeypatch):
     # content
     content = calls[0][1]['content']
 
-    # site check
-    assert '<site count="1">' in content
-    assert f"<file path=\"site/inbox/{id}/page.html\">" in content
+    # xml check
+    assert '<xml count="1">' in content
+    assert f"<file path=\"xml/inbox/{id}/page.html\">" in content
     assert 'scraped news' in content
 
     # archive move
-    assert os.listdir(f"{root}/alice@example.com/site/inbox") == []
-    assert os.listdir(f"{root}/alice@example.com/site/archive") == [id]
+    assert os.listdir(f"{root}/alice@example.com/xml/inbox") == []
+    assert os.listdir(f"{root}/alice@example.com/xml/archive") == [id]
 
     # report count
     assert len(os.listdir(f"{root}/alice@example.com/mail/outbox")) == 1
 
 
-def test_process_preserve_inbox_keeps_site(tmp_path, monkeypatch):
+def test_process_preserve_inbox_keeps_xml(tmp_path, monkeypatch):
 
     # root
     root = f"{tmp_path}/staples"
@@ -978,8 +880,8 @@ def test_process_preserve_inbox_keeps_site(tmp_path, monkeypatch):
     # user make
     user_make(root, 'alice@example.com', 'daily', 'summarise the new pages.')
 
-    # site make
-    id = site_make(root, 'alice@example.com')
+    # xml make
+    id = xml_make(root, 'alice@example.com')
 
     # model make
     model_make(monkeypatch)
@@ -988,7 +890,7 @@ def test_process_preserve_inbox_keeps_site(tmp_path, monkeypatch):
     process(root, 'alice@example.com', 'preview', preserve_inbox = True)
 
     # assert
-    assert os.listdir(f"{root}/alice@example.com/site/inbox") == [id]
+    assert os.listdir(f"{root}/alice@example.com/xml/inbox") == [id]
     assert len(os.listdir(f"{root}/alice@example.com/mail/outbox")) == 1
 
 
@@ -1183,7 +1085,7 @@ def test_process_defers_mail_over_input_limit(tmp_path, monkeypatch):
     assert sorted(os.listdir(f"{root}/alice@example.com/mail/inbox")) == sorted(ids[1:])
 
 
-def test_get_schema_reads_data_only(tmp_path):
+def test_get_schema_reads_template_json(tmp_path):
 
     # root
     root = f"{tmp_path}/staples"
@@ -1198,12 +1100,12 @@ def test_get_schema_reads_data_only(tmp_path):
     schema_make(root, 'alice@example.com', {'title': ''})
 
     # context make
-    with open(f"{root}/alice@example.com/repo/package.json", 'w') as fp:
+    with open(f"{root}/alice@example.com/code/package.json", 'w') as fp:
         fp.write('{"name": "app"}')
 
     # assert
     assert get_schema(root, 'alice@example.com') == '{\n    "title": ""\n}\n'
-    assert get_context(root, 'alice@example.com') == '<file path="repo/package.json">\n{"name": "app"}\n</file>\n'
+    assert get_context(root, 'alice@example.com') == '<file path="code/package.json">\n{"name": "app"}\n</file>\n'
 
 
 def test_get_schema_empty_without_file(tmp_path):

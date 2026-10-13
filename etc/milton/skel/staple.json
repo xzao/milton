@@ -1,0 +1,28 @@
+{
+    "from": "",
+    "to": "",
+    "subject": "",
+    "cc": [],
+    "bcc": [],
+    "schedules": {
+        "worker": [
+            "daily 08:00"
+        ],
+        "scraper": [
+            "1h"
+        ]
+    },
+    "sites": [
+        {
+            "name": "",
+            "url": "",
+            "xpath": "",
+            "request": {
+                "method": "GET",
+                "headers": {},
+                "params": {},
+                "body": ""
+            }
+        }
+    ]
+}

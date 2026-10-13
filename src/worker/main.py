@@ -1,8 +1,8 @@
 #
 #   src/worker/main.py
 #
-from shared import util
-from task import interval, list_schedules, process, timing
+from shared import schedule, util
+from task import list_schedules, process
 import functools
 import logging
 import os
@@ -41,7 +41,7 @@ def register():
     for user in util.emails(EMAILS):
 
         # dir make
-        for sub in ['mail/inbox', 'mail/outbox', 'mail/sent', 'mail/archive', 'site/inbox', 'site/archive']:
+        for sub in ['mail/inbox', 'mail/outbox', 'mail/sent', 'mail/archive', 'xml/inbox', 'xml/archive']:
             os.makedirs(f"{EMAILS}/{user}/{sub}", exist_ok = True)
 
         # schedule[s]
@@ -83,14 +83,14 @@ def register():
 
         # timing guard
         try:
-            triggers = timing(name, ZONE)
+            triggers = schedule.timing(name, ZONE)
         except Exception as error:
             logging.warning(f"[{key}] refused[{error}]")
             continue
 
         # job add
         if triggers == None:
-            registered[key] = jobs.cyclic(interval(name), handle)
+            registered[key] = jobs.cyclic(schedule.interval(name), handle)
         else:
             registered[key] = jobs.weekly(triggers, handle)
 

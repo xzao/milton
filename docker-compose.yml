@@ -17,6 +17,21 @@ services:
     volumes:
       - ./mnt/etc/milton:/etc/milton
 
+  scraper:
+    build:
+      context: .
+      args:
+        SERVICE: scraper
+    container_name: scraper
+    user: "${MILTON_UID:-1000}:${MILTON_GID:-1000}"
+    env_file:
+      - .env
+    environment:
+      TZ: ${MILTON_TIMEZONE:-UTC}
+    restart: unless-stopped
+    volumes:
+      - ./mnt/etc/milton:/etc/milton
+
   worker:
     build:
       context: .

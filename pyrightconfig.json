@@ -2,6 +2,7 @@
 	"extraPaths": [
 		"src",
 		"src/receiver",
+		"src/scraper",
 		"src/worker",
 		"src/dispatcher"
 	]

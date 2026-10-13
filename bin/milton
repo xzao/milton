@@ -15,7 +15,7 @@ DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(DIR, '..', 'src'))
 
 # service dir[s]
-for service in ['receiver', 'worker', 'dispatcher']:
+for service in ['receiver', 'scraper', 'worker', 'dispatcher']:
     sys.path.insert(0, os.path.join(DIR, '..', 'src', service))
 
 
@@ -23,14 +23,16 @@ for service in ['receiver', 'worker', 'dispatcher']:
 #   import[s]
 #
 from shared import util
+from page import collect
 from task import process
 
 
 #
 #   var[s]
 #
-EMAILS = '/etc/milton/staples'
-LABEL  = 'preview'
+EMAILS  = '/etc/milton/staples'
+LABEL   = 'preview'
+TIMEOUT = util.env_int('MILTON_SCRAPER_TIMEOUT', 30)
 
 
 #
@@ -42,6 +44,36 @@ util.log_setup()
 #
 #   command[s]
 #
+def scraper_scrape(args):
+
+    # address[s]
+    if args.address == None:
+        addresses = util.emails(EMAILS)
+    else:
+        addresses = [args.address]
+
+    # ok
+    ok = True
+
+    # address iterate
+    for address in addresses:
+
+        # address check
+        if not util.valid(EMAILS, address):
+            logging.warning(f"[{address}] not accepted")
+            ok = False
+            continue
+
+        # log
+        logging.info(f"[{address}] scrape")
+
+        # collect
+        if not collect(EMAILS, address, TIMEOUT):
+            ok = False
+
+    # return
+    return ok
+
 def worker_process(args):
 
     # address[s]
@@ -86,6 +118,25 @@ parser = argparse.ArgumentParser(
 
 # service[s]
 service = parser.add_subparsers(dest = 'service', required = True)
+
+# scraper
+scraper = service.add_parser('scraper', help = 'site scraping commands')
+scraper_command = scraper.add_subparsers(dest = 'command', required = True)
+
+# scraper scrape
+scraper_scrape_parser = scraper_command.add_parser(
+    'scrape',
+    help = 'fetch the sites of an address into xml/inbox, once per address'
+)
+
+scraper_scrape_parser.add_argument(
+    'address',
+    nargs   = '?',
+    default = None,
+    help    = 'address folder; every address when omitted'
+)
+
+scraper_scrape_parser.set_defaults(run = scraper_scrape)
 
 # worker
 worker = service.add_parser('worker', help = 'mail processing commands')
