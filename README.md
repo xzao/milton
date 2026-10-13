@@ -102,6 +102,7 @@ schedule edits need no restart.
 make develop [receiver worker dispatcher]   run services locally (all three by default)
 make flush [address ...]           clear unsent reports from mail/outbox (asks first)
 make init you@example.com         create a new address from /etc/milton/skel
+make permissions                   chown mnt/ to MILTON_UID:MILTON_GID (1000:1000)
 make preview                       preview a report without consuming the inbox
 make start                         build and start the stack
 make logs                          follow service logs

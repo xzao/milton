@@ -2,7 +2,7 @@
 #	Makefile
 #
 .DEFAULT_GOAL := logs
-.PHONY: develop flush init install logs preview restart shell start stop test upgrade version
+.PHONY: develop flush init install logs permissions preview restart shell start stop test upgrade version
 
 
 #
@@ -83,6 +83,9 @@ install:
 
 logs:
 	docker compose logs -f
+
+permissions:
+	sudo chown -R $(or $(MILTON_UID),1000):$(or $(MILTON_GID),1000) $(CURDIR)/mnt
 
 preview:
 	@python bin/milton worker process "${MILTON_CLI_WORKER_ADDRESS}" --preserve-inbox

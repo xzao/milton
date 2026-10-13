@@ -601,8 +601,8 @@ recipe just runs something (`@python bin/milton ...`, `@clear`, `@git pull`).
 `.DEFAULT_GOAL` is `logs`; every target belongs in `.PHONY`.
 
 Targets are one lowercase word and alphabetical inside `#\ttarget[s]`:
-`develop`, `flush`, `init`, `install`, `logs`, `preview`, `restart`, `shell`,
-`start`, `stop`, `test`, `upgrade`, `version`. A `%` catch-all in its own
+`develop`, `flush`, `init`, `install`, `logs`, `permissions`, `preview`,
+`restart`, `shell`, `start`, `stop`, `test`, `upgrade`, `version`. A `%` catch-all in its own
 last section, `#\targ[s]`, swallows extra goal arguments so targets can read
 them from `$(MAKECMDGOALS)`:
 
@@ -619,6 +619,8 @@ them from `$(MAKECMDGOALS)`:
   copies the repo `etc/milton/skel/` into `/etc/milton/skel` without
   overwriting files already there (`cp --update=none`, so local edits
   survive), and installs the requirements;
+- `permissions` resets the ownership of all of `mnt/` to `MILTON_UID` /
+  `MILTON_GID` (`1000:1000` by default);
 - `preview` previews a report for `MILTON_CLI_WORKER_ADDRESS` (every address
   when empty), site pages included, without consuming either inbox;
 - `test [component ...]` runs one test folder (all of `test/` by default);
